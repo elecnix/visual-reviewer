@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateText } from "ai";
 import { readBundle } from "../evidence/store.js";
-import { loadLatestHistory, saveHistoryRecord, type HistoryRecord } from "../evidence/history.js";
+import { loadLatestHistory, loadAllHistory, saveHistoryRecord, detectFlakiness, type HistoryRecord } from "../evidence/history.js";
 import { loadFeedbackForTest, type FeedbackRecord } from "../evidence/feedback.js";
 import { buildSystemPrompt, buildUserContent } from "../context/builder.js";
 import { resolveModel } from "./provider.js";
@@ -64,6 +64,8 @@ export async function judgeBundle(
     config.baselines && bundle.status === "passed"
       ? loadLatestHistory(bundleDir)
       : null;
+  const allHistory = config.baselines ? loadAllHistory(bundleDir) : [];
+  const flakinessNote = detectFlakiness(allHistory) ?? undefined;
   const baseline = history
     ? {
         date: history.timestamp,
@@ -73,6 +75,7 @@ export async function judgeBundle(
         assertionsPassed: history.assertionsPassed,
         assertionsTotal: history.assertionsTotal,
         screenshotFile: history.finalScreenshot,
+        flakinessNote,
       }
     : null;
   let text = "";

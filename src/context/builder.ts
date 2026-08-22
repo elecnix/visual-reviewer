@@ -25,6 +25,8 @@ export interface BaselineInfo {
   assertionsTotal: number;
   /** Bundle-relative path of the previous run's final screenshot. */
   screenshotFile?: string;
+  /** Set when verdict history shows flip-flopping (flaky behavior). */
+  flakinessNote?: string;
 }
 
 export function buildSystemPrompt(expectations?: string, feedback?: string): string {
@@ -179,6 +181,7 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
 - previous AI verdict: ${baseline.verdict} (${Math.round(baseline.confidence * 100)}% confidence)
 - previous deterministic result: ${baseline.deterministicStatus}, ${baseline.assertionsPassed}/${baseline.assertionsTotal} assertions passed
 ${baseline.screenshotFile ? "- a PREVIOUS RUN SCREENSHOT is attached below the current screenshots; compare UI state against it semantically (ignore pixel noise)." : ""}
+${baseline.flakinessNote ? `- FLAKINESS WARNING: ${baseline.flakinessNote}` : ""}
 Use the baseline as context: changes consistent with modified test intent are expected; changes in areas unrelated to the change may indicate regressions.\n`;
   }
 
