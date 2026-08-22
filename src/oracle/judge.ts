@@ -7,6 +7,7 @@ import { resolveModel } from "./provider.js";
 import { VerdictSchema, type Verdict } from "./schema.js";
 import type { OracleConfig } from "../config.js";
 import { renderMarkdownReport } from "../report/markdown.js";
+import { renderHtmlIndex, renderHtmlReport, type IndexEntry } from "../report/html.js";
 import { reportPathFor } from "../config.js";
 
 /** Extract the first JSON object from model output (cheap models add prose). */
@@ -75,6 +76,7 @@ export async function judgeBundle(
   const reportPath = reportPathFor(bundlePath);
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, renderMarkdownReport(bundle, verdict));
+  fs.writeFileSync(reportPath.replace(/\.md$/, ".html"), renderHtmlReport(bundle, verdict));
 
   return { bundlePath, verdict };
 }
@@ -102,5 +104,24 @@ export async function judgeBundles(
       results.push({ bundlePath, error: err instanceof Error ? err.message : String(err) });
     }
   }
+
+  writeRunIndex(bundlePaths, results);
   return results;
+}
+
+/** Run-level HTML index next to the per-test reports. */
+function writeRunIndex(bundlePaths: string[], results: Judgement[]): void {
+  if (bundlePaths.length === 0) return;
+  const outputDir = path.dirname(path.dirname(path.resolve(bundlePaths[0])));
+  const entries: IndexEntry[] = results.map((r) => {
+    const bundleDir = path.dirname(path.resolve(r.bundlePath));
+    const bundle = readBundle(r.bundlePath);
+    return {
+      title: bundle.title,
+      href: path.relative(outputDir, path.join(bundleDir, "report.html")),
+      verdict: r.verdict?.verdict,
+      error: r.error,
+    };
+  });
+  fs.writeFileSync(path.join(outputDir, "report.html"), renderHtmlIndex(entries));
 }
