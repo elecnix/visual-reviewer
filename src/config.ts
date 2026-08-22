@@ -21,6 +21,8 @@ export interface OracleConfig {
   followUpThreshold: number;
   /** Team expectations file injected into the oracle's system prompt. */
   expectationsFile: string;
+  /** JSONL file where human verdict feedback is stored. */
+  feedbackFile: string;
 }
 
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
@@ -35,6 +37,7 @@ export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
   followUps: true,
   followUpThreshold: 0.7,
   expectationsFile: ".visual-reviewer/expectations.md",
+  feedbackFile: ".visual-reviewer/feedback.jsonl",
 };
 
 export interface VisualReviewerOptions extends Partial<OracleConfig> {
@@ -66,6 +69,7 @@ export function resolveOracleConfig(
     followUps: options.followUps ?? DEFAULT_ORACLE_CONFIG.followUps,
     followUpThreshold: options.followUpThreshold ?? DEFAULT_ORACLE_CONFIG.followUpThreshold,
     expectationsFile: options.expectationsFile ?? DEFAULT_ORACLE_CONFIG.expectationsFile,
+    feedbackFile: options.feedbackFile ?? DEFAULT_ORACLE_CONFIG.feedbackFile,
   };
 }
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * visual-reviewer CLI — judge saved evidence bundles.
+ * visual-reviewer CLI — judge saved evidence bundles, record feedback.
  *
  *   visual-reviewer judge [.visual-reviewer] [--model id] [--base-url url]
+ *   visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."]
  */
+import path from "node:path";
 import { findBundles } from "./evidence/store.js";
 import { resolveOracleConfig, resolveOutputDir, type VisualReviewerOptions } from "./config.js";
 import { judgeBundles } from "./oracle/judge.js";
@@ -32,7 +34,59 @@ function parseArgs(argv: string[]): {
 }
 
 async function main(): Promise<void> {
-  const { dir, options, help } = parseArgs(process.argv.slice(2));
+  const [command, ...rest] = process.argv.slice(2);
+  if (command === "feedback") return feedbackMain(rest);
+  return judgeMain([command, ...rest]);
+}
+
+/** visual-reviewer feedback <bundleDir> --accept|--reject [--note "…"] [--verdict REGRESSION] */
+async function feedbackMain(argv: string[]): Promise<void> {
+  let dir = "";
+  let accepted: boolean | undefined;
+  let note: string | undefined;
+  let verdict: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--accept") accepted = true;
+    else if (arg === "--reject") accepted = false;
+    else if (arg === "--note") note = argv[++i];
+    else if (arg === "--verdict") verdict = argv[++i];
+    else if (arg === "-h" || arg === "--help") {
+      console.log(`Record human feedback on an AI verdict (feeds future judgements).
+
+Usage:
+  visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."] [--verdict REGRESSION]
+
+<bundleDir> is a test's directory under the output dir (contains bundle.json).
+`);
+      process.exit(0);
+    } else if (!arg.startsWith("-")) dir = arg;
+  }
+  if (accepted === undefined) {
+    console.error("feedback requires --accept or --reject");
+    process.exit(5);
+  }
+  const { resolveOracleConfig } = await import("./config.js");
+  const { readBundle } = await import("./evidence/store.js");
+  const { saveFeedbackRecord } = await import("./evidence/feedback.js");
+  const config = resolveOracleConfig();
+  const bundlePath = path.resolve(dir, "bundle.json");
+  const bundle = readBundle(bundlePath);
+  saveFeedbackRecord(path.resolve(config.feedbackFile), {
+    timestamp: new Date().toISOString(),
+    testId: bundle.testId,
+    title: bundle.title,
+    accepted,
+    verdict,
+    note,
+  });
+  console.log(
+    `Recorded ${accepted ? "ACCEPTANCE" : "REJECTION"} of ${verdict ?? "previous"} verdict for "${bundle.title}".`,
+  );
+}
+
+async function judgeMain(argv: string[]): Promise<void> {
+  const { dir, options, help } = parseArgs(argv);
   if (help) {
     console.log(`visual-reviewer — AI semantic test oracle (advisory)
 

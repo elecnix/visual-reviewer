@@ -27,11 +27,16 @@ export interface BaselineInfo {
   screenshotFile?: string;
 }
 
-export function buildSystemPrompt(expectations?: string): string {
+export function buildSystemPrompt(expectations?: string, feedback?: string): string {
   const expectationsBlock =
     expectations && expectations.trim().length > 0
       ? `\nPROJECT-SPECIFIC EXPECTATIONS (provided by the team — treat as authoritative context for intent):
 ${expectations.trim().slice(0, 4000)}\n`
+      : "";
+  const feedbackBlock =
+    feedback && feedback.trim().length > 0
+      ? `\nHUMAN FEEDBACK on your previous verdicts for this test (treat as authoritative corrections):
+${feedback.trim().slice(0, 2000)}\n`
       : "";
   return `You are a semantic test oracle. You judge whether a UI test's intended
 outcome actually occurred — not merely whether its deterministic assertions passed.
@@ -52,7 +57,7 @@ Rules:
    "suggestedNextStep":string}
 - REGRESSION/FAIL means the intended behavior did not occur despite what the
   deterministic results claim. PASS means evidence supports the intent and no
-  material contradictory evidence exists.${expectationsBlock}`;
+  material contradictory evidence exists.${expectationsBlock}${feedbackBlock}`;
 }
 
 function truncate(text: string, max: number): string {

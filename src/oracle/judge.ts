@@ -3,6 +3,7 @@ import path from "node:path";
 import { generateText } from "ai";
 import { readBundle } from "../evidence/store.js";
 import { loadLatestHistory, saveHistoryRecord, type HistoryRecord } from "../evidence/history.js";
+import { loadFeedbackForTest, type FeedbackRecord } from "../evidence/feedback.js";
 import { buildSystemPrompt, buildUserContent } from "../context/builder.js";
 import { resolveModel } from "./provider.js";
 import { VerdictSchema, type Verdict } from "./schema.js";
@@ -37,9 +38,25 @@ export async function judgeBundle(
   let systemPrompt = buildSystemPrompt();
   try {
     const expectationsPath = path.resolve(config.expectationsFile);
-    systemPrompt = buildSystemPrompt(fs.readFileSync(expectationsPath, "utf8"));
+    const feedback: FeedbackRecord[] = loadFeedbackForTest(
+      path.resolve(config.feedbackFile),
+      bundle.testId,
+    );
+    const feedbackBlock =
+      feedback.length > 0
+        ? feedback
+            .map(
+              (f) =>
+                `- ${f.timestamp}: human ${f.accepted ? "ACCEPTED" : "REJECTED"} your ${f.verdict ?? "previous"} verdict${f.note ? ` — "${f.note}"` : ""}`,
+            )
+            .join("\n")
+        : undefined;
+    systemPrompt = buildSystemPrompt(
+      fs.existsSync(expectationsPath) ? fs.readFileSync(expectationsPath, "utf8") : undefined,
+      feedbackBlock,
+    );
   } catch {
-    /* no expectations file — default prompt */
+    /* no expectations/feedback — default prompt */
   }
 
   // Phase-2 baseline: compare against the most recent previous judgement.
