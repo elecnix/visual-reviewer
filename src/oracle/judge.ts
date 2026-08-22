@@ -143,6 +143,13 @@ export async function judgeBundles(
   }
 
   writeRunIndex(bundlePaths, results);
+
+  // Advisory CI surfacing: job summary + ::warning annotations on GitHub.
+  const gh = await import("../ci/github.js");
+  if (gh.isGitHubCI()) {
+    gh.writeStepSummary(results);
+    gh.emitAnnotations(results);
+  }
   return results;
 }
 
