@@ -18,3 +18,16 @@ export {
   type AssertionRecord,
 } from "./evidence/model.js";
 export { VerdictSchema, type Verdict } from "./oracle/schema.js";
+
+// Adapter layer — framework-agnostic evidence intake for native runners.
+export {
+  registerAdapter,
+  unregisterAdapter,
+  listAdapters,
+  getAdapter,
+  buildForAdapter,
+  buildBundleFromAdapter,
+  loadAdapterArtifacts,
+  type FrameworkAdapter,
+  type AdapterArtifacts,
+} from "./adapter/index.js";
