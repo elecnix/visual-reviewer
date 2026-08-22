@@ -1,5 +1,7 @@
 # Visual Reviewer
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/elecnix/visual-reviewer)
+
 **AI semantic test oracle for Playwright.** Your test goes green; Visual Reviewer independently answers: *did the software actually do what this test was intended to verify?* — and shows its evidence when the answer is no.
 
 Advisory-only by design: it never fails your CI on its own.
