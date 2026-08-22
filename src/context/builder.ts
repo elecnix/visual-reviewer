@@ -15,7 +15,31 @@ const MAX_SOURCE_CHARS = 12_000;
 const MAX_NETWORK_EVENTS = 60;
 const MAX_CONSOLE_EVENTS = 40;
 
-export function buildSystemPrompt(): string {
+/** Previous-run summary used for semantic baseline comparison. */
+export interface BaselineInfo {
+  date: string;
+  verdict: string;
+  confidence: number;
+  deterministicStatus: string;
+  assertionsPassed: number;
+  assertionsTotal: number;
+  /** Bundle-relative path of the previous run's final screenshot. */
+  screenshotFile?: string;
+  /** Set when verdict history shows flip-flopping (flaky behavior). */
+  flakinessNote?: string;
+}
+
+export function buildSystemPrompt(expectations?: string, feedback?: string): string {
+  const expectationsBlock =
+    expectations && expectations.trim().length > 0
+      ? `\nPROJECT-SPECIFIC EXPECTATIONS (provided by the team — treat as authoritative context for intent):
+${expectations.trim().slice(0, 4000)}\n`
+      : "";
+  const feedbackBlock =
+    feedback && feedback.trim().length > 0
+      ? `\nHUMAN FEEDBACK on your previous verdicts for this test (treat as authoritative corrections):
+${feedback.trim().slice(0, 2000)}\n`
+      : "";
   return `You are a semantic test oracle. You judge whether a UI test's intended
 outcome actually occurred — not merely whether its deterministic assertions passed.
 
@@ -35,7 +59,7 @@ Rules:
    "suggestedNextStep":string}
 - REGRESSION/FAIL means the intended behavior did not occur despite what the
   deterministic results claim. PASS means evidence supports the intent and no
-  material contradictory evidence exists.`;
+  material contradictory evidence exists.${expectationsBlock}${feedbackBlock}`;
 }
 
 function truncate(text: string, max: number): string {
@@ -91,6 +115,7 @@ export function buildUserContent(
   bundle: EvidenceBundle,
   bundleDir: string,
   maxScreenshots: number,
+  baseline?: BaselineInfo | null,
 ): Array<TextPart | ImagePart> {
   const parts: Array<TextPart | ImagePart> = [];
 
@@ -151,6 +176,15 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
     text += `\nACCESSIBILITY TREE [${aria.id}]${aria.metadata?.name ? ` (${String(aria.metadata.name)})` : ""}:\n${truncate(String(aria.content), 4000)}\n`;
   }
 
+  if (baseline) {
+    text += `\nBASELINE (previous run of this test, ${baseline.date}):
+- previous AI verdict: ${baseline.verdict} (${Math.round(baseline.confidence * 100)}% confidence)
+- previous deterministic result: ${baseline.deterministicStatus}, ${baseline.assertionsPassed}/${baseline.assertionsTotal} assertions passed
+${baseline.screenshotFile ? "- a PREVIOUS RUN SCREENSHOT is attached below the current screenshots; compare UI state against it semantically (ignore pixel noise)." : ""}
+${baseline.flakinessNote ? `- FLAKINESS WARNING: ${baseline.flakinessNote}` : ""}
+Use the baseline as context: changes consistent with modified test intent are expected; changes in areas unrelated to the change may indicate regressions.\n`;
+  }
+
   text += `\nEVIDENCE AVAILABLE: ${bundle.evidence.length} observations (${bundle.evidence.filter((e) => e.type === "screenshot").length} screenshots, ${networkEvents.length} network events, ${consoleEvents.length} console events). Screenshots attached below are ordered oldest→newest.\n`;
 
   text += `\nJudge whether the intended user outcome occurred. Return only the JSON verdict object.`;
@@ -164,6 +198,16 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
       text: `SCREENSHOT [${shot.evidence.id}]${shot.evidence.metadata?.name ? ` name=${String(shot.evidence.metadata.name)}` : ""}`,
     });
     parts.push({ type: "image", image: new Uint8Array(shot.buffer) });
+  }
+
+  if (baseline?.screenshotFile) {
+    try {
+      const prev = fs.readFileSync(path.join(bundleDir, baseline.screenshotFile));
+      parts.push({ type: "text", text: "PREVIOUS RUN SCREENSHOT (baseline)" });
+      parts.push({ type: "image", image: new Uint8Array(prev) });
+    } catch {
+      /* baseline screenshot missing — skip silently */
+    }
   }
 
   return parts;

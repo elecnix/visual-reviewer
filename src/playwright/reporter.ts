@@ -9,6 +9,7 @@ import type {
 import type { Evidence, EvidenceBundle } from "../evidence/model.js";
 import { nextEvidenceId } from "../evidence/model.js";
 import { sanitizeTestId, writeBundle } from "../evidence/store.js";
+import { parseTraceZip } from "./trace.js";
 import {
   resolveOracleConfig,
   resolveOutputDir,
@@ -91,7 +92,21 @@ export class VisualReviewerReporter implements Reporter {
             kind: string;
             data: unknown;
           }>;
-          for (const event of events) {
+          // The fixture emits a request-only event plus a response event for
+          // the same call; drop requests that have a matching response.
+          const responseKeys = new Set(
+            events
+              .filter((e) => e.kind === "response")
+              .map((e) => `${(e.data as Record<string, unknown>).method} ${(e.data as Record<string, unknown>).url}`),
+          );
+          const deduped = events.filter(
+            (e) =>
+              e.kind !== "request" ||
+              !responseKeys.has(
+                `${(e.data as Record<string, unknown>).method} ${(e.data as Record<string, unknown>).url}`,
+              ),
+          );
+          for (const event of deduped) {
             const type =
               event.kind === "console"
                 ? "console_event"
@@ -120,6 +135,26 @@ export class VisualReviewerReporter implements Reporter {
           content: body.toString("utf8"),
           metadata: { name: attachment.name },
         });
+      }
+    }
+
+    // 1b. Trace parsing — works on ANY suite, fixture or not. Extracts
+    // network bodies, action timeline, DOM snapshot and screencast frames.
+    if (artifacts.trace) {
+      try {
+        evidence.push(
+          ...parseTraceZip(path.join(bundleDir, artifacts.trace), {
+            assetsDir: path.join(bundleDir, "assets"),
+            baseWallTime: result.startTime.getTime(),
+          }),
+        );
+      } catch (err) {
+        // Advisory: a malformed trace must not break bundle creation.
+        console.warn(
+          `[visual-reviewer] trace parse failed for "${test.title}": ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
 

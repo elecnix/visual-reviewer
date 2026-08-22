@@ -15,7 +15,11 @@ function evidenceSection(entries: Verdict["supportingEvidence"], heading: string
     .join("\n")}\n`;
 }
 
-export function renderMarkdownReport(bundle: EvidenceBundle, verdict: Verdict): string {
+export function renderMarkdownReport(
+  bundle: EvidenceBundle,
+  verdict: Verdict,
+  baseline?: { date: string; verdict: string; confidence: number } | null,
+): string {
   const passed = bundle.assertions.filter((a) => a.passed).length;
   return `# Visual Reviewer — Evidence Report
 
@@ -28,6 +32,13 @@ export function renderMarkdownReport(bundle: EvidenceBundle, verdict: Verdict): 
 ${VERDICT_ICON[verdict.verdict]} **${verdict.verdict}** — ${Math.round(verdict.confidence * 100)}% confidence
 
 > ${verdict.intentSummary}
+${
+  baseline
+    ? `
+**Baseline:** compared against previous run from ${baseline.date} — previous AI verdict ${baseline.verdict} (${Math.round(baseline.confidence * 100)}%).
+`
+    : ""
+}
 
 ## Why
 

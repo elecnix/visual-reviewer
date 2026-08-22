@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * visual-reviewer CLI — judge saved evidence bundles.
+ * visual-reviewer CLI — judge saved evidence bundles, record feedback.
  *
  *   visual-reviewer judge [.visual-reviewer] [--model id] [--base-url url]
+ *   visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."]
  */
+import path from "node:path";
+import fs from "node:fs";
 import { findBundles } from "./evidence/store.js";
 import { resolveOracleConfig, resolveOutputDir, type VisualReviewerOptions } from "./config.js";
 import { judgeBundles } from "./oracle/judge.js";
@@ -24,6 +27,7 @@ function parseArgs(argv: string[]): {
     else if (arg === "--api-key-env") options.apiKeyEnvVar = argv[++i];
     else if (arg === "--output-dir") options.outputDir = argv[++i];
     else if (arg === "--max-screenshots") options.maxScreenshots = Number(argv[++i]);
+    else if (arg === "--no-baselines") options.baselines = false;
     else if (arg === "--no-judge" || arg === "-h" || arg === "--help") help = true;
     else if (!arg.startsWith("-")) dir = arg;
   }
@@ -31,7 +35,106 @@ function parseArgs(argv: string[]): {
 }
 
 async function main(): Promise<void> {
-  const { dir, options, help } = parseArgs(process.argv.slice(2));
+  const [command, ...rest] = process.argv.slice(2);
+  if (command === "feedback") return feedbackMain(rest);
+  if (command === "bench") return benchMain(rest);
+  return judgeMain([command, ...rest]);
+}
+
+/** visual-reviewer bench <scenariosDir> [--model id] [--base-url url] */
+async function benchMain(argv: string[]): Promise<void> {
+  let dir = "";
+  const options: VisualReviewerOptions = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--model") options.model = argv[++i];
+    else if (arg === "--base-url") options.baseURL = argv[++i];
+    else if (arg === "--api-key-env") options.apiKeyEnvVar = argv[++i];
+    else if (arg === "--seed") dir = argv[++i];
+    else if (!arg.startsWith("-")) dir = arg;
+  }
+  const { resolveOracleConfig } = await import("./config.js");
+  const { runBenchmark, seedStarterScenarios } = await import("./oracle/bench.js");
+
+  let scenariosDir = dir;
+  if (!scenariosDir || !fs.existsSync(path.join(scenariosDir))) {
+    // No scenario dir given (or missing): seed starters into a fresh one.
+    scenariosDir = path.resolve(".visual-reviewer/bench");
+    if (!fs.existsSync(scenariosDir)) {
+      seedStarterScenarios(scenariosDir);
+      console.log(`Seeded starter scenarios into ${scenariosDir}`);
+    }
+  }
+
+  console.log(`Running benchmark from ${scenariosDir} …`);
+  const config = resolveOracleConfig(options);
+  const report = await runBenchmark(scenariosDir, config);
+
+  console.log("");
+  console.log(`Scenarios: ${report.scenarios} | Judged: ${report.judged}`);
+  console.log(`Correct:   ${report.correct}/${report.scenarios} (${Math.round(report.detectionRate * 100)}%)`);
+  console.log(`False positives: ${report.falsePositives} | False negatives: ${report.falseNegatives}`);
+  console.log(`Latency: avg ${report.avgLatencyMs}ms`);
+  for (const c of report.cases) {
+    console.log(
+      `  ${c.correct ? "✓" : "✗"} ${c.name}: expected ${c.expected}, got ${c.actual ?? "ERROR"} (${c.latencyMs}ms)`,
+    );
+  }
+
+  fs.writeFileSync(
+    path.join(process.cwd(), ".visual-reviewer", "bench-report.json"),
+    JSON.stringify(report, null, 2),
+  );
+}
+
+/** visual-reviewer feedback <bundleDir> --accept|--reject [--note "…"] [--verdict REGRESSION] */
+async function feedbackMain(argv: string[]): Promise<void> {
+  let dir = "";
+  let accepted: boolean | undefined;
+  let note: string | undefined;
+  let verdict: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--accept") accepted = true;
+    else if (arg === "--reject") accepted = false;
+    else if (arg === "--note") note = argv[++i];
+    else if (arg === "--verdict") verdict = argv[++i];
+    else if (arg === "-h" || arg === "--help") {
+      console.log(`Record human feedback on an AI verdict (feeds future judgements).
+
+Usage:
+  visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."] [--verdict REGRESSION]
+
+<bundleDir> is a test's directory under the output dir (contains bundle.json).
+`);
+      process.exit(0);
+    } else if (!arg.startsWith("-")) dir = arg;
+  }
+  if (accepted === undefined) {
+    console.error("feedback requires --accept or --reject");
+    process.exit(5);
+  }
+  const { resolveOracleConfig } = await import("./config.js");
+  const { readBundle } = await import("./evidence/store.js");
+  const { saveFeedbackRecord } = await import("./evidence/feedback.js");
+  const config = resolveOracleConfig();
+  const bundlePath = path.resolve(dir, "bundle.json");
+  const bundle = readBundle(bundlePath);
+  saveFeedbackRecord(path.resolve(config.feedbackFile), {
+    timestamp: new Date().toISOString(),
+    testId: bundle.testId,
+    title: bundle.title,
+    accepted,
+    verdict,
+    note,
+  });
+  console.log(
+    `Recorded ${accepted ? "ACCEPTANCE" : "REJECTION"} of ${verdict ?? "previous"} verdict for "${bundle.title}".`,
+  );
+}
+
+async function judgeMain(argv: string[]): Promise<void> {
+  const { dir, options, help } = parseArgs(argv);
   if (help) {
     console.log(`visual-reviewer — AI semantic test oracle (advisory)
 

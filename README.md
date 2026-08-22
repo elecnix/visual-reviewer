@@ -78,7 +78,33 @@ const test = base.extend({
 npx playwright test
 ```
 
-After the deterministic run, each captured test is judged. Verdicts print in the terminal and full evidence reports land at `.visual-reviewer/**/report.md`.
+After the deterministic run, each captured test is judged. Verdicts print in the terminal; evidence reports land at `.visual-reviewer/**/report.md` (+ `report.html` per test) with a run index at `.visual-reviewer/report.html`.
+
+Evidence comes from two sources, used together when available:
+- **Trace parsing** — any suite with `trace: 'on'` gets network bodies, action timeline, DOM snapshot and screencast screenshots extracted from `trace.zip`, no fixture needed.
+- **The capture fixture** (`visual-reviewer/playwright`) adds live network/console/a11y observations.
+
+### Baseline comparison
+
+Each judged run persists a history record; the next judgement of the same test receives the previous verdict *and* previous screenshot as semantic baseline ("did the UI change in ways inconsistent with intent?"), not pixel diffing. Disable with `--no-baselines` or `baselines: false`.
+
+### Agentic follow-up
+
+If the first pass is `UNCERTAIN` or below `followUpThreshold` (default 0.7), the oracle may request up to 3 specific additional pieces of evidence (network bodies by URL, console events, DOM snapshot, screenshot by index, action timeline). Requests are resolved deterministically against the local bundle and the round is capped at one. Disable with `followUps: false`.
+
+### Project expectations (org memory)
+
+Put team knowledge in `.visual-reviewer/expectations.md` — known issues, environment quirks, conventions — and it is injected into the oracle's system prompt:
+
+```markdown
+- KNOWN ISSUE #42: the payment API fails in staging and the UI shows both success text and the error banner. Report PASS and reference KNOWN ISSUE #42.
+```
+
+Override the location with `expectationsFile`.
+
+### GitHub CI surfacing (advisory)
+
+Inside GitHub Actions, verdicts are appended to the job summary (`$GITHUB_STEP_SUMMARY`) as a table, and REGRESSION/FAIL verdicts emit `::warning` annotations. They never fail the job.
 
 ## Providers
 
