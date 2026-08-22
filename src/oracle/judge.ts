@@ -33,6 +33,15 @@ export async function judgeBundle(
   const bundleDir = path.dirname(bundlePath);
   const model = resolveModel(config);
 
+  // Team expectations (org memory seed): inject when the file exists.
+  let systemPrompt = buildSystemPrompt();
+  try {
+    const expectationsPath = path.resolve(config.expectationsFile);
+    systemPrompt = buildSystemPrompt(fs.readFileSync(expectationsPath, "utf8"));
+  } catch {
+    /* no expectations file — default prompt */
+  }
+
   // Phase-2 baseline: compare against the most recent previous judgement.
   const history =
     config.baselines && bundle.status === "passed"
@@ -57,7 +66,7 @@ export async function judgeBundle(
   for (let attempt = 0; attempt < 2 && !verdict; attempt++) {
     const result = await generateText({
       model,
-      system: buildSystemPrompt(),
+      system: systemPrompt,
       messages: [
         { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
         ...(attempt > 0
@@ -98,7 +107,7 @@ export async function judgeBundle(
   ) {
     const fu = await generateText({
       model,
-      system: buildSystemPrompt(),
+      system: systemPrompt,
       messages: [
         { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
         { role: "assistant", content: lastRaw.slice(0, 4000) },
@@ -112,7 +121,7 @@ export async function judgeBundle(
       const evidenceParts = gatherRequestedEvidence(bundle, bundleDir, requests);
       const second = await generateText({
         model,
-        system: buildSystemPrompt(),
+        system: systemPrompt,
         messages: [
           { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
           { role: "assistant", content: lastRaw.slice(0, 4000) },

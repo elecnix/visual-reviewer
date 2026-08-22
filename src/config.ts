@@ -19,6 +19,8 @@ export interface OracleConfig {
   followUps: boolean;
   /** Verdicts below this confidence trigger a follow-up round. */
   followUpThreshold: number;
+  /** Team expectations file injected into the oracle's system prompt. */
+  expectationsFile: string;
 }
 
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
@@ -32,6 +34,7 @@ export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
   baselines: true,
   followUps: true,
   followUpThreshold: 0.7,
+  expectationsFile: ".visual-reviewer/expectations.md",
 };
 
 export interface VisualReviewerOptions extends Partial<OracleConfig> {
@@ -62,6 +65,7 @@ export function resolveOracleConfig(
     baselines: options.baselines ?? DEFAULT_ORACLE_CONFIG.baselines,
     followUps: options.followUps ?? DEFAULT_ORACLE_CONFIG.followUps,
     followUpThreshold: options.followUpThreshold ?? DEFAULT_ORACLE_CONFIG.followUpThreshold,
+    expectationsFile: options.expectationsFile ?? DEFAULT_ORACLE_CONFIG.expectationsFile,
   };
 }
 
