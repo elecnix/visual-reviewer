@@ -29,3 +29,20 @@ export const VerdictSchema = z.object({
 });
 
 export type Verdict = z.infer<typeof VerdictSchema>;
+
+/**
+ * Extract the first JSON object from model output. Cheap models add prose,
+ * code fences, or reasoning blocks around the verdict; some emit slightly
+ * invalid JSON (trailing commas). Tolerant by design.
+ */
+export function extractVerdictJson(text: string): unknown {
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+  const fenced = cleaned.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+  const candidate = fenced?.[1] ?? cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1);
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    // Common cheap-model slip: trailing commas before } or ].
+    return JSON.parse(candidate.replace(/,(\s*[}\]])/g, "$1"));
+  }
+}

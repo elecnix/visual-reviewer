@@ -6,20 +6,13 @@ import { loadLatestHistory, loadAllHistory, saveHistoryRecord, detectFlakiness, 
 import { loadFeedbackForTest, type FeedbackRecord } from "../evidence/feedback.js";
 import { buildSystemPrompt, buildUserContent } from "../context/builder.js";
 import { resolveModel } from "./provider.js";
-import { VerdictSchema, type Verdict } from "./schema.js";
+import { VerdictSchema, extractVerdictJson, type Verdict } from "./schema.js";
 import { followUpInstruction, gatherRequestedEvidence, parseEvidenceRequests } from "./followup.js";
 import { clusterRegressions, renderClusterSummary, type ClusterResult } from "./cluster.js";
 import type { OracleConfig } from "../config.js";
 import { renderMarkdownReport } from "../report/markdown.js";
 import { renderHtmlIndex, renderHtmlReport, type IndexEntry } from "../report/html.js";
 import { reportPathFor } from "../config.js";
-
-/** Extract the first JSON object from model output (cheap models add prose). */
-function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
-  const candidate = fenced?.[1] ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-  return JSON.parse(candidate);
-}
 
 export interface Judgement {
   bundlePath: string;
@@ -107,7 +100,7 @@ export async function judgeBundle(
     text = result.text;
     lastRaw = text;
     try {
-      verdict = VerdictSchema.parse(extractJson(text));
+      verdict = VerdictSchema.parse(extractVerdictJson(text));
     } catch {
       verdict = undefined;
     }
@@ -161,7 +154,7 @@ export async function judgeBundle(
         abortSignal: AbortSignal.timeout(config.timeoutMs),
       });
       try {
-        const refined = VerdictSchema.parse(extractJson(second.text));
+        const refined = VerdictSchema.parse(extractVerdictJson(second.text));
         verdict = refined;
       } catch {
         /* keep the original verdict — investigation is best-effort */
