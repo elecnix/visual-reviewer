@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { generateText } from "ai";
 import { readBundle } from "../evidence/store.js";
+import { loadLatestHistory, saveHistoryRecord, type HistoryRecord } from "../evidence/history.js";
 import { buildSystemPrompt, buildUserContent } from "../context/builder.js";
 import { resolveModel } from "./provider.js";
 import { VerdictSchema, type Verdict } from "./schema.js";
@@ -31,6 +32,22 @@ export async function judgeBundle(
   const bundleDir = path.dirname(bundlePath);
   const model = resolveModel(config);
 
+  // Phase-2 baseline: compare against the most recent previous judgement.
+  const history =
+    config.baselines && bundle.status === "passed"
+      ? loadLatestHistory(bundleDir)
+      : null;
+  const baseline = history
+    ? {
+        date: history.timestamp,
+        verdict: history.verdict,
+        confidence: history.confidence,
+        deterministicStatus: history.deterministicStatus,
+        assertionsPassed: history.assertionsPassed,
+        assertionsTotal: history.assertionsTotal,
+        screenshotFile: history.finalScreenshot,
+      }
+    : null;
   let text = "";
   let verdict: Verdict | undefined;
   let lastRaw = "";
@@ -41,7 +58,7 @@ export async function judgeBundle(
       model,
       system: buildSystemPrompt(),
       messages: [
-        { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots) },
+        { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
         ...(attempt > 0
           ? ([
               { role: "assistant", content: lastRaw.slice(0, 2000) },
@@ -75,8 +92,28 @@ export async function judgeBundle(
   // Advisory-only: write the report, never influence exit codes here.
   const reportPath = reportPathFor(bundlePath);
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-  fs.writeFileSync(reportPath, renderMarkdownReport(bundle, verdict));
+  fs.writeFileSync(reportPath, renderMarkdownReport(bundle, verdict, baseline));
   fs.writeFileSync(reportPath.replace(/\.md$/, ".html"), renderHtmlReport(bundle, verdict));
+
+  // Persist this run for the next run's baseline comparison.
+  const screenshots = bundle.evidence.filter((e) => e.type === "screenshot");
+  const finalShot = screenshots[screenshots.length - 1];
+  const record: HistoryRecord = {
+    timestamp: new Date().toISOString(),
+    verdict: verdict.verdict,
+    confidence: verdict.confidence,
+    deterministicStatus: bundle.status,
+    assertionsPassed: bundle.assertions.filter((a) => a.passed).length,
+    assertionsTotal: bundle.assertions.length,
+    ...(typeof (finalShot?.content as { file?: string })?.file === "string"
+      ? { finalScreenshot: (finalShot!.content as { file: string }).file }
+      : {}),
+  };
+  try {
+    saveHistoryRecord(bundleDir, record);
+  } catch {
+    /* history is best-effort */
+  }
 
   return { bundlePath, verdict };
 }

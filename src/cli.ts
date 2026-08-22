@@ -24,6 +24,7 @@ function parseArgs(argv: string[]): {
     else if (arg === "--api-key-env") options.apiKeyEnvVar = argv[++i];
     else if (arg === "--output-dir") options.outputDir = argv[++i];
     else if (arg === "--max-screenshots") options.maxScreenshots = Number(argv[++i]);
+    else if (arg === "--no-baselines") options.baselines = false;
     else if (arg === "--no-judge" || arg === "-h" || arg === "--help") help = true;
     else if (!arg.startsWith("-")) dir = arg;
   }

@@ -13,6 +13,8 @@ export interface OracleConfig {
   temperature: number;
   /** Per-request timeout in ms. */
   timeoutMs: number;
+  /** Compare against previous runs' stored history (Phase-2 baseline). */
+  baselines: boolean;
 }
 
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
@@ -23,6 +25,7 @@ export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
   maxScreenshots: 6,
   temperature: 0,
   timeoutMs: 120_000,
+  baselines: true,
 };
 
 export interface VisualReviewerOptions extends Partial<OracleConfig> {
@@ -50,6 +53,7 @@ export function resolveOracleConfig(
     maxScreenshots: options.maxScreenshots ?? DEFAULT_ORACLE_CONFIG.maxScreenshots,
     temperature: options.temperature ?? DEFAULT_ORACLE_CONFIG.temperature,
     timeoutMs: options.timeoutMs ?? DEFAULT_ORACLE_CONFIG.timeoutMs,
+    baselines: options.baselines ?? DEFAULT_ORACLE_CONFIG.baselines,
   };
 }
 

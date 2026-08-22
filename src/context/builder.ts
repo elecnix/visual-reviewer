@@ -15,6 +15,18 @@ const MAX_SOURCE_CHARS = 12_000;
 const MAX_NETWORK_EVENTS = 60;
 const MAX_CONSOLE_EVENTS = 40;
 
+/** Previous-run summary used for semantic baseline comparison. */
+export interface BaselineInfo {
+  date: string;
+  verdict: string;
+  confidence: number;
+  deterministicStatus: string;
+  assertionsPassed: number;
+  assertionsTotal: number;
+  /** Bundle-relative path of the previous run's final screenshot. */
+  screenshotFile?: string;
+}
+
 export function buildSystemPrompt(): string {
   return `You are a semantic test oracle. You judge whether a UI test's intended
 outcome actually occurred — not merely whether its deterministic assertions passed.
@@ -91,6 +103,7 @@ export function buildUserContent(
   bundle: EvidenceBundle,
   bundleDir: string,
   maxScreenshots: number,
+  baseline?: BaselineInfo | null,
 ): Array<TextPart | ImagePart> {
   const parts: Array<TextPart | ImagePart> = [];
 
@@ -151,6 +164,14 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
     text += `\nACCESSIBILITY TREE [${aria.id}]${aria.metadata?.name ? ` (${String(aria.metadata.name)})` : ""}:\n${truncate(String(aria.content), 4000)}\n`;
   }
 
+  if (baseline) {
+    text += `\nBASELINE (previous run of this test, ${baseline.date}):
+- previous AI verdict: ${baseline.verdict} (${Math.round(baseline.confidence * 100)}% confidence)
+- previous deterministic result: ${baseline.deterministicStatus}, ${baseline.assertionsPassed}/${baseline.assertionsTotal} assertions passed
+${baseline.screenshotFile ? "- a PREVIOUS RUN SCREENSHOT is attached below the current screenshots; compare UI state against it semantically (ignore pixel noise)." : ""}
+Use the baseline as context: changes consistent with modified test intent are expected; changes in areas unrelated to the change may indicate regressions.\n`;
+  }
+
   text += `\nEVIDENCE AVAILABLE: ${bundle.evidence.length} observations (${bundle.evidence.filter((e) => e.type === "screenshot").length} screenshots, ${networkEvents.length} network events, ${consoleEvents.length} console events). Screenshots attached below are ordered oldest→newest.\n`;
 
   text += `\nJudge whether the intended user outcome occurred. Return only the JSON verdict object.`;
@@ -164,6 +185,16 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
       text: `SCREENSHOT [${shot.evidence.id}]${shot.evidence.metadata?.name ? ` name=${String(shot.evidence.metadata.name)}` : ""}`,
     });
     parts.push({ type: "image", image: new Uint8Array(shot.buffer) });
+  }
+
+  if (baseline?.screenshotFile) {
+    try {
+      const prev = fs.readFileSync(path.join(bundleDir, baseline.screenshotFile));
+      parts.push({ type: "text", text: "PREVIOUS RUN SCREENSHOT (baseline)" });
+      parts.push({ type: "image", image: new Uint8Array(prev) });
+    } catch {
+      /* baseline screenshot missing — skip silently */
+    }
   }
 
   return parts;

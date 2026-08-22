@@ -78,7 +78,15 @@ const test = base.extend({
 npx playwright test
 ```
 
-After the deterministic run, each captured test is judged. Verdicts print in the terminal and full evidence reports land at `.visual-reviewer/**/report.md`.
+After the deterministic run, each captured test is judged. Verdicts print in the terminal; evidence reports land at `.visual-reviewer/**/report.md` (+ `report.html` per test) with a run index at `.visual-reviewer/report.html`.
+
+Evidence comes from two sources, used together when available:
+- **Trace parsing** — any suite with `trace: 'on'` gets network bodies, action timeline, DOM snapshot and screencast screenshots extracted from `trace.zip`, no fixture needed.
+- **The capture fixture** (`visual-reviewer/playwright`) adds live network/console/a11y observations.
+
+### Baseline comparison
+
+Each judged run persists a history record; the next judgement of the same test receives the previous verdict *and* previous screenshot as semantic baseline ("did the UI change in ways inconsistent with intent?"), not pixel diffing. Disable with `--no-baselines` or `baselines: false`.
 
 ## Providers
 
