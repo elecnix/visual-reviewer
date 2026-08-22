@@ -6,6 +6,7 @@
  *   visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."]
  */
 import path from "node:path";
+import fs from "node:fs";
 import { findBundles } from "./evidence/store.js";
 import { resolveOracleConfig, resolveOutputDir, type VisualReviewerOptions } from "./config.js";
 import { judgeBundles } from "./oracle/judge.js";
@@ -36,7 +37,54 @@ function parseArgs(argv: string[]): {
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   if (command === "feedback") return feedbackMain(rest);
+  if (command === "bench") return benchMain(rest);
   return judgeMain([command, ...rest]);
+}
+
+/** visual-reviewer bench <scenariosDir> [--model id] [--base-url url] */
+async function benchMain(argv: string[]): Promise<void> {
+  let dir = "";
+  const options: VisualReviewerOptions = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--model") options.model = argv[++i];
+    else if (arg === "--base-url") options.baseURL = argv[++i];
+    else if (arg === "--api-key-env") options.apiKeyEnvVar = argv[++i];
+    else if (arg === "--seed") dir = argv[++i];
+    else if (!arg.startsWith("-")) dir = arg;
+  }
+  const { resolveOracleConfig } = await import("./config.js");
+  const { runBenchmark, seedStarterScenarios } = await import("./oracle/bench.js");
+
+  let scenariosDir = dir;
+  if (!scenariosDir || !fs.existsSync(path.join(scenariosDir))) {
+    // No scenario dir given (or missing): seed starters into a fresh one.
+    scenariosDir = path.resolve(".visual-reviewer/bench");
+    if (!fs.existsSync(scenariosDir)) {
+      seedStarterScenarios(scenariosDir);
+      console.log(`Seeded starter scenarios into ${scenariosDir}`);
+    }
+  }
+
+  console.log(`Running benchmark from ${scenariosDir} …`);
+  const config = resolveOracleConfig(options);
+  const report = await runBenchmark(scenariosDir, config);
+
+  console.log("");
+  console.log(`Scenarios: ${report.scenarios} | Judged: ${report.judged}`);
+  console.log(`Correct:   ${report.correct}/${report.scenarios} (${Math.round(report.detectionRate * 100)}%)`);
+  console.log(`False positives: ${report.falsePositives} | False negatives: ${report.falseNegatives}`);
+  console.log(`Latency: avg ${report.avgLatencyMs}ms`);
+  for (const c of report.cases) {
+    console.log(
+      `  ${c.correct ? "✓" : "✗"} ${c.name}: expected ${c.expected}, got ${c.actual ?? "ERROR"} (${c.latencyMs}ms)`,
+    );
+  }
+
+  fs.writeFileSync(
+    path.join(process.cwd(), ".visual-reviewer", "bench-report.json"),
+    JSON.stringify(report, null, 2),
+  );
 }
 
 /** visual-reviewer feedback <bundleDir> --accept|--reject [--note "…"] [--verdict REGRESSION] */
