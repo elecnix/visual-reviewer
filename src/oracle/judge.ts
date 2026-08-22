@@ -6,6 +6,7 @@ import { loadLatestHistory, saveHistoryRecord, type HistoryRecord } from "../evi
 import { buildSystemPrompt, buildUserContent } from "../context/builder.js";
 import { resolveModel } from "./provider.js";
 import { VerdictSchema, type Verdict } from "./schema.js";
+import { followUpInstruction, gatherRequestedEvidence, parseEvidenceRequests } from "./followup.js";
 import type { OracleConfig } from "../config.js";
 import { renderMarkdownReport } from "../report/markdown.js";
 import { renderHtmlIndex, renderHtmlReport, type IndexEntry } from "../report/html.js";
@@ -87,6 +88,55 @@ export async function judgeBundle(
       bundlePath,
       error: `Model returned unparseable verdict after retry.\nRaw: ${text.slice(0, 500)}`,
     };
+  }
+
+  // Bounded agentic round (§7): on UNCERTAIN or low confidence, let the
+  // model request specific additional evidence and re-judge once.
+  if (
+    config.followUps &&
+    (verdict.verdict === "UNCERTAIN" || verdict.confidence < config.followUpThreshold)
+  ) {
+    const fu = await generateText({
+      model,
+      system: buildSystemPrompt(),
+      messages: [
+        { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
+        { role: "assistant", content: lastRaw.slice(0, 4000) },
+        { role: "user", content: followUpInstruction() },
+      ],
+      temperature: config.temperature,
+      abortSignal: AbortSignal.timeout(config.timeoutMs),
+    });
+    const requests = parseEvidenceRequests(fu.text);
+    if (requests.length > 0) {
+      const evidenceParts = gatherRequestedEvidence(bundle, bundleDir, requests);
+      const second = await generateText({
+        model,
+        system: buildSystemPrompt(),
+        messages: [
+          { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
+          { role: "assistant", content: lastRaw.slice(0, 4000) },
+          {
+            role: "user",
+            content: [
+              ...evidenceParts,
+              {
+                type: "text",
+                text: "Based on your original observations plus this requested evidence, return your final verdict. Respond ONLY with the JSON verdict object.",
+              },
+            ],
+          },
+        ],
+        temperature: config.temperature,
+        abortSignal: AbortSignal.timeout(config.timeoutMs),
+      });
+      try {
+        const refined = VerdictSchema.parse(extractJson(second.text));
+        verdict = refined;
+      } catch {
+        /* keep the original verdict — investigation is best-effort */
+      }
+    }
   }
 
   // Advisory-only: write the report, never influence exit codes here.

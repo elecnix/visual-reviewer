@@ -15,6 +15,10 @@ export interface OracleConfig {
   timeoutMs: number;
   /** Compare against previous runs' stored history (Phase-2 baseline). */
   baselines: boolean;
+  /** Allow one bounded additional-evidence round on low-confidence/UNCERTAIN. */
+  followUps: boolean;
+  /** Verdicts below this confidence trigger a follow-up round. */
+  followUpThreshold: number;
 }
 
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
@@ -26,6 +30,8 @@ export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
   temperature: 0,
   timeoutMs: 120_000,
   baselines: true,
+  followUps: true,
+  followUpThreshold: 0.7,
 };
 
 export interface VisualReviewerOptions extends Partial<OracleConfig> {
@@ -54,6 +60,8 @@ export function resolveOracleConfig(
     temperature: options.temperature ?? DEFAULT_ORACLE_CONFIG.temperature,
     timeoutMs: options.timeoutMs ?? DEFAULT_ORACLE_CONFIG.timeoutMs,
     baselines: options.baselines ?? DEFAULT_ORACLE_CONFIG.baselines,
+    followUps: options.followUps ?? DEFAULT_ORACLE_CONFIG.followUps,
+    followUpThreshold: options.followUpThreshold ?? DEFAULT_ORACLE_CONFIG.followUpThreshold,
   };
 }
 
