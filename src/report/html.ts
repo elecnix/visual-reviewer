@@ -1,5 +1,6 @@
 import type { EvidenceBundle } from "../evidence/model.js";
 import type { Verdict } from "../oracle/schema.js";
+import type { ClusterResult } from "../oracle/cluster.js";
 
 const VERDICT_CLASS: Record<Verdict["verdict"], string> = {
   PASS: "pass",
@@ -100,7 +101,7 @@ export interface IndexEntry {
 }
 
 /** Run-level index linking every judged test's report. */
-export function renderHtmlIndex(entries: IndexEntry[]): string {
+export function renderHtmlIndex(entries: IndexEntry[], clusters?: ClusterResult): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -116,6 +117,18 @@ export function renderHtmlIndex(entries: IndexEntry[]): string {
 </head>
 <body>
 <h1>Visual Reviewer — Run Report</h1>
+${
+  clusters && clusters.clusters.length > 0
+    ? `<section><h2>Likely root causes</h2>${clusters.clusters
+        .map(
+          (c) =>
+            `<p>🔗 <code>${escapeHtml(c.label)}</code> — ${c.tests.length} test(s): ${escapeHtml(
+              [...new Set(c.tests.map((t) => t.title))].join(", "),
+            )}</p>`,
+        )
+        .join("")}</section>`
+    : ""
+}
 <table><tr><th>Verdict</th><th>Test</th></tr>
 ${entries
   .map(

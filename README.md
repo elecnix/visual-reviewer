@@ -94,6 +94,22 @@ Each judged run persists a history record; the next judgement of the same test r
 
 If the first pass is `UNCERTAIN` or below `followUpThreshold` (default 0.7), the oracle may request up to 3 specific additional pieces of evidence (network bodies by URL, console events, DOM snapshot, screenshot by index, action timeline). Requests are resolved deterministically against the local bundle and the round is capped at one. Disable with `followUps: false`.
 
+### Regression clustering
+
+When several tests in a run receive REGRESSION/FAIL verdicts, they often share one root cause. Verdicts are grouped by shared failure signatures — failing endpoints (`POST /api/payment → 500`), error-level console messages, uncaught page exceptions — and surfaced as "likely root causes" in the run summary, the HTML run index, and the GitHub step summary:
+
+```text
+Clustering: 4 material verdict(s) → 1 likely root cause(s)
+  🔗 POST /api/payment → 500
+     3 test(s): upgrade subscription, renew plan, buy gift card
+```
+
+Clustering is deterministic (no extra model calls). Every judgement also persists a machine-readable `verdict.json` next to its report, so you can re-cluster offline at any time:
+
+```bash
+npx visual-reviewer clusters          # reads .visual-reviewer/**/{bundle,verdict}.json
+```
+
 ### Project expectations (org memory)
 
 Put team knowledge in `.visual-reviewer/expectations.md` — known issues, environment quirks, conventions — and it is injected into the oracle's system prompt:
@@ -169,4 +185,6 @@ See [VISUAL_REVIEWER_PRODUCT_BRIEF.md](./VISUAL_REVIEWER_PRODUCT_BRIEF.md) for t
 
 ## Status
 
-v0.1 vertical slice. Known gaps vs the brief: trace.zip parsing (network/console currently come from the fixture), agentic follow-up evidence requests, baseline comparison, HTML report.
+v0.2. Implemented: Playwright adapter + evidence fixture, trace.zip parsing (network/console/DOM/screenshots), agentic follow-up evidence requests, semantic baseline comparison, flakiness signal from verdict history, HTML/Markdown evidence reports with run index, GitHub CI surfacing, project expectations (org memory), human feedback loop, benchmark harness, regression clustering.
+
+Remaining vs the brief's roadmap: native adapters (Appium/XCTest), cross-platform consistency tests, autonomous reproduction/debugging.

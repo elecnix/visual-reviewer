@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import type { Judgement } from "../oracle/judge.js";
+import type { ClusterResult } from "../oracle/cluster.js";
 
 /**
  * GitHub CI integration — advisory, per the product's non-goals:
@@ -12,7 +13,7 @@ export function isGitHubCI(): boolean {
 }
 
 /** Append the verdict table to the GitHub Actions job summary. */
-export function writeStepSummary(judgements: Judgement[]): void {
+export function writeStepSummary(judgements: Judgement[], clusters?: ClusterResult): void {
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryFile || judgements.length === 0) return;
 
@@ -33,6 +34,22 @@ export function writeStepSummary(judgements: Judgement[]): void {
     })
     .join("\n");
 
+  const clusterSection =
+    clusters && clusters.clusters.length > 0
+      ? `
+### Likely root causes
+
+${clusters.clusters
+  .map(
+    (c) =>
+      `- 🔗 \`${c.label}\` — ${c.tests.length} test(s): ${[
+        ...new Set(c.tests.map((t) => t.title)),
+      ].join(", ")}`,
+  )
+  .join("\n")}
+`
+      : "";
+
   const summary = [
     "",
     "## visual-reviewer (advisory)",
@@ -40,6 +57,7 @@ export function writeStepSummary(judgements: Judgement[]): void {
     "| Verdict | Confidence | Intent |",
     "|---|---|---|",
     rows,
+    clusterSection,
     "",
     "<sub>Advisory-only — these verdicts never fail the job.</sub>",
     "",
