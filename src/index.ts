@@ -28,6 +28,7 @@ export {
   buildForAdapter,
   buildBundleFromAdapter,
   loadAdapterArtifacts,
+  appiumAdapter,
   type FrameworkAdapter,
   type AdapterArtifacts,
 } from "./adapter/index.js";

@@ -21,3 +21,4 @@ export type {
   AdapterStatus,
 } from "./types.js";
 export type { RegisteredAdapter } from "./registry.js";
+export { appiumAdapter, parseAppium } from "./appium.js";
