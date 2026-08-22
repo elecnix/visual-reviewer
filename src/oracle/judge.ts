@@ -30,25 +30,44 @@ export async function judgeBundle(
   const bundleDir = path.dirname(bundlePath);
   const model = resolveModel(config);
 
-  const { text } = await generateText({
-    model,
-    system: buildSystemPrompt(),
-    messages: [
-      { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots) },
-    ],
-    temperature: config.temperature,
-    abortSignal: AbortSignal.timeout(config.timeoutMs),
-  });
+  let text = "";
+  let verdict: Verdict | undefined;
+  let lastRaw = "";
+  // Cheap models occasionally wrap/precede the JSON with prose; retry once
+  // with an explicit correction before giving up.
+  for (let attempt = 0; attempt < 2 && !verdict; attempt++) {
+    const result = await generateText({
+      model,
+      system: buildSystemPrompt(),
+      messages: [
+        { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots) },
+        ...(attempt > 0
+          ? ([
+              { role: "assistant", content: lastRaw.slice(0, 2000) },
+              {
+                role: "user",
+                content:
+                  "Your previous reply was not a valid JSON verdict object. Respond again with ONLY the JSON object, no prose, no code fences.",
+              },
+            ] as const)
+          : []),
+      ],
+      temperature: config.temperature,
+      abortSignal: AbortSignal.timeout(config.timeoutMs),
+    });
+    text = result.text;
+    lastRaw = text;
+    try {
+      verdict = VerdictSchema.parse(extractJson(text));
+    } catch {
+      verdict = undefined;
+    }
+  }
 
-  let verdict: Verdict;
-  try {
-    verdict = VerdictSchema.parse(extractJson(text));
-  } catch (err) {
+  if (!verdict) {
     return {
       bundlePath,
-      error: `Model returned unparseable verdict: ${
-        err instanceof Error ? err.message : String(err)
-      }\nRaw: ${text.slice(0, 500)}`,
+      error: `Model returned unparseable verdict after retry.\nRaw: ${text.slice(0, 500)}`,
     };
   }
 
