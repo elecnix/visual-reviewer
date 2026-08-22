@@ -37,3 +37,17 @@ test("repairs trailing commas before } and ]", () => {
 test("throws on genuinely unparseable output", () => {
   assert.throws(() => extractVerdictJson("no json here at all"));
 });
+
+test("extracts the first balanced object when prose with braces follows the JSON", () => {
+  const text = '{"verdict":"PASS","confidence":0.9} Note: use {curly} braces in templates.';
+  const out = extractVerdictJson(text);
+  assert.equal(out.verdict, "PASS");
+  assert.equal(out.confidence, 0.9);
+});
+
+test("balanced scan respects braces inside strings", () => {
+  const text = '{"verdict":"FAIL","reasoning":"template {a} used","confidence":0.8} trailing';
+  const out = extractVerdictJson(text);
+  assert.equal(out.verdict, "FAIL");
+  assert.match(out.reasoning, /\{a\}/);
+});

@@ -75,9 +75,9 @@ export async function judgeBundle(
   let text = "";
   let verdict: Verdict | undefined;
   let lastRaw = "";
-  // Cheap models occasionally wrap/precede the JSON with prose; retry once
-  // with an explicit correction before giving up.
-  for (let attempt = 0; attempt < 2 && !verdict; attempt++) {
+  // Cheap models occasionally wrap/precede the JSON with prose or emit
+  // slightly-invalid JSON; retry twice more before giving up.
+  for (let attempt = 0; attempt < 3 && !verdict; attempt++) {
     const result = await generateText({
       model,
       system: systemPrompt,
@@ -107,6 +107,13 @@ export async function judgeBundle(
   }
 
   if (!verdict) {
+    // Keep the full raw output for diagnosis — the error message only
+    // carries a 500-char preview.
+    try {
+      fs.writeFileSync(path.join(bundleDir, "verdict-error.txt"), text);
+    } catch {
+      /* best-effort */
+    }
     return {
       bundlePath,
       error: `Model returned unparseable verdict after retry.\nRaw: ${text.slice(0, 500)}`,
