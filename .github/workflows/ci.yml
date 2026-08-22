@@ -16,8 +16,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npx tsc
+      - run: npm test
       - run: node dist/cli.js --help > /dev/null
+      - run: node dist/cli.js clusters --help > /dev/null
 
   oracle-smoke:
     # End-to-end: one synthetic bundle through the real provider.

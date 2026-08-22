@@ -4,6 +4,7 @@
  *
  *   visual-reviewer judge [.visual-reviewer] [--model id] [--base-url url]
  *   visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."]
+ *   visual-reviewer clusters [.visual-reviewer]
  */
 import path from "node:path";
 import fs from "node:fs";
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   if (command === "feedback") return feedbackMain(rest);
   if (command === "bench") return benchMain(rest);
+  if (command === "clusters") return clustersMain(rest);
   return judgeMain([command, ...rest]);
 }
 
@@ -85,6 +87,68 @@ async function benchMain(argv: string[]): Promise<void> {
     path.join(process.cwd(), ".visual-reviewer", "bench-report.json"),
     JSON.stringify(report, null, 2),
   );
+}
+
+/**
+ * visual-reviewer clusters [.visual-reviewer]
+ *
+ * Offline: groups already-saved verdicts by shared failure signatures
+ * (failing endpoints, console errors, crashes). Needs no API key.
+ */
+async function clustersMain(argv: string[]): Promise<void> {
+  let dir = "";
+  for (const arg of argv) {
+    if (arg === "-h" || arg === "--help") {
+      console.log(`Group regression verdicts by likely root cause (offline, no API key).
+
+Usage:
+  visual-reviewer clusters [dir]
+
+Reads bundle.json + verdict.json pairs under dir (default: ./.visual-reviewer)
+and prints shared failure signatures across material verdicts.
+`);
+      process.exit(0);
+    } else if (!arg.startsWith("-")) dir = arg;
+  }
+
+  const rootDir = resolveOutputDir(dir || undefined);
+  if (!fs.existsSync(rootDir)) {
+    console.error(`No output dir at ${rootDir}. Run your Playwright suite with the visual-reviewer/reporter first.`);
+    process.exit(1);
+  }
+  const { readBundle, findBundles } = await import("./evidence/store.js");
+  const { clusterRegressions, renderClusterSummary } = await import("./oracle/cluster.js");
+
+  const bundles = findBundles(rootDir);
+  if (bundles.length === 0) {
+    console.error(`No evidence bundles found under ${rootDir}.`);
+    process.exit(1);
+  }
+
+  type AnyBundle = ReturnType<typeof readBundle>;
+  const items: Array<{ bundle: AnyBundle; verdict?: { verdict: string; confidence: number } }> = [];
+  let missingVerdicts = 0;
+  for (const bundlePath of bundles) {
+    const bundle = readBundle(bundlePath);
+    const verdictPath = path.join(path.dirname(bundlePath), "verdict.json");
+    try {
+      const verdict = JSON.parse(fs.readFileSync(verdictPath, "utf8")) as {
+        verdict: string;
+        confidence: number;
+      };
+      items.push({ bundle, verdict });
+    } catch {
+      missingVerdicts += 1;
+    }
+  }
+
+  console.log(
+    `Loaded ${items.length} judged bundle(s) under ${rootDir}` +
+      (missingVerdicts > 0 ? ` (${missingVerdicts} without verdict.json — skipped)` : ""),
+  );
+  const summary = renderClusterSummary(clusterRegressions(items));
+  if (summary) console.log(summary);
+  else console.log("No shared failure signatures found across material verdicts.");
 }
 
 /** visual-reviewer feedback <bundleDir> --accept|--reject [--note "…"] [--verdict REGRESSION] */
