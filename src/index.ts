@@ -33,3 +33,13 @@ export {
   type FrameworkAdapter,
   type AdapterArtifacts,
 } from "./adapter/index.js";
+
+// Cross-platform consistency — group same-intent runs across harnesses.
+export {
+  groupPlatformRuns,
+  runFromBundle,
+  consistencyKey,
+  registerPlatformAdapter,
+  type ConsistencyGroup,
+  type PlatformRun,
+} from "./cross/index.js";
