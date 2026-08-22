@@ -181,10 +181,32 @@ Verdict JSON (zod-validated) → Evidence report (Markdown)
 
 No Playwright concepts exist outside `src/playwright/`. A second adapter (Appium, Selenium…) would only translate its artifacts into an `EvidenceBundle`.
 
+### Native adapters
+
+Beyond Playwright, any harness can feed the same oracle through the **adapter layer** (`src/adapter/`). A concrete `FrameworkAdapter` translates a native harness's artifact export into the canonical `AdapterArtifacts` shape; the shared bundle builder writes it to a reviewable `EvidenceBundle` (screenshots and state dumps under `files/`), so a native run flows through the same context → oracle → report pipeline.
+
+Two adapters are included (Phase-3 roadmap):
+
+- **Appium** (`appiumAdapter`) — iOS/Android. Reads an `appium.json` manifest: tap/action steps with screenshots, in-step visibility hierarchies, network/console/log events, and assertion events.
+- **XCTest / XCUITest** (`xctestAdapter`) — Apple native. Reads an `xctest.json` manifest: UI hierarchy snapshots, screenshots, logs, attachments (video), and assertion events.
+
+`parseAppium` / `parseXCTest` translate manifests entirely offline. The context builder renders `native_ui_tree`, `native_state`, and `user_action` evidence natively, so the oracle judges native output with the same evidence-backed reasoning as web output.
+
+### Cross-platform consistency
+
+Because every adapter produces an `EvidenceBundle`, the **same intent run on several harnesses** can be grouped (`src/cross/`). Bundles are keyed by their intent — the test's first title segment, platform-independent — and each group reports which platforms agree, which diverge, and each platform's deterministic status:
+
+```ts
+import { groupPlatformRuns } from "visual-reviewer";
+const groups = groupPlatformRuns(bundlePaths); // { intentTitle, runs, allPassed, divergent }
+```
+
+`divergent` is true when at least two harnesses disagree on pass/fail for the same intent — an early signal that a cross-platform regression slipped past green tests.
+
 See [VISUAL_REVIEWER_PRODUCT_BRIEF.md](./VISUAL_REVIEWER_PRODUCT_BRIEF.md) for the full product brief.
 
 ## Status
 
-v0.2. Implemented: Playwright adapter + evidence fixture, trace.zip parsing (network/console/DOM/screenshots), agentic follow-up evidence requests, semantic baseline comparison, flakiness signal from verdict history, HTML/Markdown evidence reports with run index, GitHub CI surfacing, project expectations (org memory), human feedback loop, benchmark harness, regression clustering.
+v0.2. Implemented: Playwright adapter + evidence fixture, trace.zip parsing (network/console/DOM/screenshots), agentic follow-up evidence requests, semantic baseline comparison, flakiness signal from verdict history, HTML/Markdown evidence reports with run index, GitHub CI surfacing, project expectations (org memory), human feedback loop, benchmark harness, regression clustering, native adapters (Appium + XCUITest), cross-platform consistency grouping.
 
-Remaining vs the brief's roadmap: native adapters (Appium/XCTest), cross-platform consistency tests, autonomous reproduction/debugging.
+Remaining vs the roadmap: autonomous reproduction/debugging.

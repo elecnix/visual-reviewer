@@ -18,3 +18,28 @@ export {
   type AssertionRecord,
 } from "./evidence/model.js";
 export { VerdictSchema, type Verdict } from "./oracle/schema.js";
+
+// Adapter layer — framework-agnostic evidence intake for native runners.
+export {
+  registerAdapter,
+  unregisterAdapter,
+  listAdapters,
+  getAdapter,
+  buildForAdapter,
+  buildBundleFromAdapter,
+  loadAdapterArtifacts,
+  appiumAdapter,
+  xctestAdapter,
+  type FrameworkAdapter,
+  type AdapterArtifacts,
+} from "./adapter/index.js";
+
+// Cross-platform consistency — group same-intent runs across harnesses.
+export {
+  groupPlatformRuns,
+  runFromBundle,
+  consistencyKey,
+  registerPlatformAdapter,
+  type ConsistencyGroup,
+  type PlatformRun,
+} from "./cross/index.js";
