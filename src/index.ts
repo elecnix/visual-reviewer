@@ -7,7 +7,8 @@
  * - Types: EvidenceBundle, Evidence, Verdict
  */
 export { attachEvidenceCollector, type EvidenceCollector } from "./playwright/fixtures.js";
-export { evidenceTest } from "./playwright/test.js";
+export { evidenceTest, evidenceTest as test } from "./playwright/test.js";
+export { expect } from "@playwright/test";
 export { VisualReviewerReporter } from "./playwright/reporter.js";
 export type { VisualReviewerOptions } from "./config.js";
 export {
