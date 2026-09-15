@@ -176,6 +176,23 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
     text += `\nACCESSIBILITY TREE [${aria.id}]${aria.metadata?.name ? ` (${String(aria.metadata.name)})` : ""}:\n${truncate(String(aria.content), 4000)}\n`;
   }
 
+  // Native-app output (Appium hierarchy, XCTest UI tree, device state dumps).
+  const nativeTrees = bundle.evidence.filter((e) => e.type === "native_ui_tree");
+  for (const tree of nativeTrees.slice(0, 4)) {
+    text += `\nNATIVE UI TREE [${tree.id}]${tree.metadata?.name ? ` (${String(tree.metadata.name)})` : ""}:\n${truncate(String(tree.content), 4000)}\n`;
+  }
+  const nativeStates = bundle.evidence.filter((e) => e.type === "native_state");
+  for (const state of nativeStates.slice(0, 4)) {
+    text += `\nNATIVE DEVICE STATE [${state.id}]${state.metadata?.name ? ` (${String(state.metadata.name)})` : ""}:\n${truncate(String(state.content), 2000)}\n`;
+  }
+  const nativeActions = bundle.evidence.filter((e) => e.type === "user_action");
+  if (nativeActions.length > 0) {
+    text += `\nUSER ACTIONS ON DEVICE:\n`;
+    for (const action of nativeActions.slice(0, 20)) {
+      text += `  [${action.id}] t+${action.timestamp}ms ${truncate(JSON.stringify(action.content), 300)}\n`;
+    }
+  }
+
   if (baseline) {
     text += `\nBASELINE (previous run of this test, ${baseline.date}):
 - previous AI verdict: ${baseline.verdict} (${Math.round(baseline.confidence * 100)}% confidence)

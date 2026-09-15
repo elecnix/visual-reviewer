@@ -1,5 +1,7 @@
 import type { EvidenceBundle } from "../evidence/model.js";
 import type { Verdict } from "../oracle/schema.js";
+import type { ClusterResult } from "../oracle/cluster.js";
+import { renderClusterSummary } from "../oracle/cluster.js";
 
 const VERDICT_ICON: Record<Verdict["verdict"], string> = {
   PASS: "✅",
@@ -53,7 +55,10 @@ ${verdict.suggestedNextStep ? `## Suggested next step\n\n${verdict.suggestedNext
 `;
 }
 
-export function renderRunSummary(judgements: Array<{ bundlePath: string; verdict?: Verdict; error?: string }>): string {
+export function renderRunSummary(
+  judgements: Array<{ bundlePath: string; verdict?: Verdict; error?: string }>,
+  clusters?: ClusterResult,
+): string {
   const lines = ["", "── visual-reviewer (advisory) " + "─".repeat(30)];
   for (const j of judgements) {
     const title = j.verdict ? "" : "";
@@ -66,6 +71,10 @@ export function renderRunSummary(judgements: Array<{ bundlePath: string; verdict
     } else {
       lines.push(`  ⚠️  JUDGE ERROR  ${j.error?.split("\n")[0]}`);
     }
+  }
+  if (clusters) {
+    const clusterLines = renderClusterSummary(clusters);
+    if (clusterLines) lines.push(clusterLines);
   }
   lines.push("  Reports: .visual-reviewer/**/report.md");
   return lines.join("\n");

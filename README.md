@@ -94,6 +94,22 @@ Each judged run persists a history record; the next judgement of the same test r
 
 If the first pass is `UNCERTAIN` or below `followUpThreshold` (default 0.7), the oracle may request up to 3 specific additional pieces of evidence (network bodies by URL, console events, DOM snapshot, screenshot by index, action timeline). Requests are resolved deterministically against the local bundle and the round is capped at one. Disable with `followUps: false`.
 
+### Regression clustering
+
+When several tests in a run receive REGRESSION/FAIL verdicts, they often share one root cause. Verdicts are grouped by shared failure signatures — failing endpoints (`POST /api/payment → 500`), error-level console messages, uncaught page exceptions — and surfaced as "likely root causes" in the run summary, the HTML run index, and the GitHub step summary:
+
+```text
+Clustering: 4 material verdict(s) → 1 likely root cause(s)
+  🔗 POST /api/payment → 500
+     3 test(s): upgrade subscription, renew plan, buy gift card
+```
+
+Clustering is deterministic (no extra model calls). Every judgement also persists a machine-readable `verdict.json` next to its report, so you can re-cluster offline at any time:
+
+```bash
+npx visual-reviewer clusters          # reads .visual-reviewer/**/{bundle,verdict}.json
+```
+
 ### Project expectations (org memory)
 
 Put team knowledge in `.visual-reviewer/expectations.md` — known issues, environment quirks, conventions — and it is injected into the oracle's system prompt:
@@ -165,8 +181,32 @@ Verdict JSON (zod-validated) → Evidence report (Markdown)
 
 No Playwright concepts exist outside `src/playwright/`. A second adapter (Appium, Selenium…) would only translate its artifacts into an `EvidenceBundle`.
 
+### Native adapters
+
+Beyond Playwright, any harness can feed the same oracle through the **adapter layer** (`src/adapter/`). A concrete `FrameworkAdapter` translates a native harness's artifact export into the canonical `AdapterArtifacts` shape; the shared bundle builder writes it to a reviewable `EvidenceBundle` (screenshots and state dumps under `files/`), so a native run flows through the same context → oracle → report pipeline.
+
+Two adapters are included (Phase-3 roadmap):
+
+- **Appium** (`appiumAdapter`) — iOS/Android. Reads an `appium.json` manifest: tap/action steps with screenshots, in-step visibility hierarchies, network/console/log events, and assertion events.
+- **XCTest / XCUITest** (`xctestAdapter`) — Apple native. Reads an `xctest.json` manifest: UI hierarchy snapshots, screenshots, logs, attachments (video), and assertion events.
+
+`parseAppium` / `parseXCTest` translate manifests entirely offline. The context builder renders `native_ui_tree`, `native_state`, and `user_action` evidence natively, so the oracle judges native output with the same evidence-backed reasoning as web output.
+
+### Cross-platform consistency
+
+Because every adapter produces an `EvidenceBundle`, the **same intent run on several harnesses** can be grouped (`src/cross/`). Bundles are keyed by their intent — the test's first title segment, platform-independent — and each group reports which platforms agree, which diverge, and each platform's deterministic status:
+
+```ts
+import { groupPlatformRuns } from "visual-reviewer";
+const groups = groupPlatformRuns(bundlePaths); // { intentTitle, runs, allPassed, divergent }
+```
+
+`divergent` is true when at least two harnesses disagree on pass/fail for the same intent — an early signal that a cross-platform regression slipped past green tests.
+
 See [VISUAL_REVIEWER_PRODUCT_BRIEF.md](./VISUAL_REVIEWER_PRODUCT_BRIEF.md) for the full product brief.
 
 ## Status
 
-v0.1 vertical slice. Known gaps vs the brief: trace.zip parsing (network/console currently come from the fixture), agentic follow-up evidence requests, baseline comparison, HTML report.
+v0.2. Implemented: Playwright adapter + evidence fixture, trace.zip parsing (network/console/DOM/screenshots), agentic follow-up evidence requests, semantic baseline comparison, flakiness signal from verdict history, HTML/Markdown evidence reports with run index, GitHub CI surfacing, project expectations (org memory), human feedback loop, benchmark harness, regression clustering, native adapters (Appium + XCUITest), cross-platform consistency grouping.
+
+Remaining vs the roadmap: autonomous reproduction/debugging.
