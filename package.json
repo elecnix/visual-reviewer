@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.6"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,7 +33,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test test/*.test.mjs"
+    "test": "tsc && node --test \"test/**/*.test.ts\" \"test/**/*.test.mjs\""
   },
   "keywords": [
     "playwright",
