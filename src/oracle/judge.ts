@@ -249,17 +249,17 @@ export async function judgeBundle(
 export async function judgeBundles(
   bundlePaths: string[],
   config: OracleConfig,
-  complete?: Complete,
+  // Same seam, same default expression as judgeBundle — one completion seam for
+  // the whole run, so a scripted implementation can drive every bundle in a run
+  // as well as a single judgement.
+  complete: Complete = createComplete(config),
 ): Promise<Judgement[]> {
-  // One completion seam for the whole run, so a scripted implementation can
-  // drive every bundle in a run as well as a single judgement.
-  const completeRun = complete ?? createComplete(config);
   const results: Judgement[] = [];
   for (const bundlePath of bundlePaths) {
     const bundle = readBundle(bundlePath);
     process.stdout.write(`[visual-reviewer] judging ${bundle.title} … `);
     try {
-      const judgement = await judgeBundle(bundlePath, config, completeRun);
+      const judgement = await judgeBundle(bundlePath, config, complete);
       if (judgement.verdict) {
         console.log(
           `${judgement.verdict.verdict} (${Math.round(judgement.verdict.confidence * 100)}%)`,
