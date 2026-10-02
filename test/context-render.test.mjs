@@ -32,6 +32,12 @@ function bundleWithEveryType() {
     native_state: { platform: "iOS", osVersion: "18.0" },
     user_action: { label: "click #submit" },
   };
+  // This is a .mjs fixture, so the type checker cannot enforce that every
+  // declared EvidenceType has content here. Without this, adding a type to the
+  // union would silently build evidence with `content: undefined` and the suite
+  // would still pass on a weaker fixture than it thinks it is testing.
+  const uncovered = EVIDENCE_TYPES.filter((type) => !(type in content));
+  assert.deepEqual(uncovered, [], `fixture must cover every declared evidence type; missing: ${uncovered}`);
   const evidence = EVIDENCE_TYPES.map((type, i) => ({
     id: `ev-${type}`,
     timestamp: i,
@@ -85,7 +91,7 @@ test("every declared evidence type reaches the dossier or is loudly announced", 
 
   // Withheld types must be announced rather than dropped.
   for (const type of EVIDENCE_TYPES.filter((t) => EVIDENCE_RENDER_KIND[t] === "not-rendered")) {
-    assert.match(text, new RegExp(`\\[ev-${type}\\][^\\n]*${type}`), `${type} must be announced as not-shown`);
+    assert.match(text, new RegExp(`\\[ev-${type}\\][^\\n]*${type.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), `${type} must be announced as not-shown`);
   }
   assert.match(text, /NOT SHOWN ABOVE/);
 });
