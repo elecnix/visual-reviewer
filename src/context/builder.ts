@@ -207,7 +207,13 @@ ${truncate(bundle.sourceCode, MAX_SOURCE_CHARS)}
   // stored and judged against — but never rendered here, so the model could only
   // reach it by asking for it in the agentic second round.
   const domSnapshots = bundle.evidence.filter((e) => e.type === "dom_snapshot");
-  const finalDom = domSnapshots[domSnapshots.length - 1];
+  // Pick the final snapshot by timestamp, not by array position. Evidence order
+  // is the adapter's emission order — chronological for every adapter today, but
+  // never stated as a contract, and selectScreenshots already refuses to assume it.
+  const finalDom = domSnapshots.reduce<Evidence | undefined>(
+    (latest, e) => (latest === undefined || e.timestamp > latest.timestamp ? e : latest),
+    undefined,
+  );
   if (finalDom) {
     text += `\nFINAL DOM SNAPSHOT [${finalDom.id}]${finalDom.metadata?.note ? ` (${String(finalDom.metadata.note)})` : ""}:\n${truncate(String(finalDom.content), MAX_DOM_CHARS)}\n`;
   }
