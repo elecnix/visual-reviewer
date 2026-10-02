@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -19,8 +19,15 @@ import {
   nativeMetadata,
 } from "../../dist/adapter/index.js";
 
-function tmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "ve-seam-"));
+/**
+ * mkdtemp plus guaranteed cleanup. Registered on the test context rather than
+ * left at the end of the test body, so a failing assertion cannot leak the
+ * directory into os.tmpdir() for the rest of the run.
+ */
+function tmpDir(t: TestContext): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ve-seam-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 /** A fourth framework, written strictly to the documented contract. */
@@ -55,8 +62,8 @@ function makeFourthAdapter(id: string): FrameworkAdapter {
   };
 }
 
-function artifactsDirWithAssets(): string {
-  const dir = tmpDir();
+function artifactsDirWithAssets(t: TestContext): string {
+  const dir = tmpDir(t);
   fs.mkdirSync(path.join(dir, "files"), { recursive: true });
   fs.writeFileSync(path.join(dir, "files", "step-1.png"), new Uint8Array([1, 2]));
   fs.writeFileSync(path.join(dir, "files", "run.mp4"), new Uint8Array([3, 4]));
@@ -71,8 +78,8 @@ test("the registry is populated on import, not inert", () => {
   assert.equal(getAdapter("nope"), undefined);
 });
 
-test("a newly registered adapter is honoured by buildForAdapter", () => {
-  const dir = artifactsDirWithAssets();
+test("a newly registered adapter is honoured by buildForAdapter", (t) => {
+  const dir = artifactsDirWithAssets(t);
   registerAdapter(makeFourthAdapter("fourth"));
   try {
     const bundle = buildForAdapter("fourth", dir);
@@ -85,7 +92,6 @@ test("a newly registered adapter is honoured by buildForAdapter", () => {
   } finally {
     unregisterAdapter("fourth");
   }
-  fs.rmSync(dir, { recursive: true });
 });
 
 test("unregisterAdapter removes an adapter again", () => {
@@ -96,8 +102,8 @@ test("unregisterAdapter removes an adapter again", () => {
   assert.ok(!listAdapters().some((a) => a.id === "temp-adapter"));
 });
 
-test("assets resolve relative to the artifacts dir, absolute paths still work", () => {
-  const dir = artifactsDirWithAssets();
+test("assets resolve relative to the artifacts dir, absolute paths still work", (t) => {
+  const dir = artifactsDirWithAssets(t);
   const abs = path.join(dir, "files", "step-1.png");
 
   const relative = buildBundleFromAdapter(
@@ -136,11 +142,10 @@ test("assets resolve relative to the artifacts dir, absolute paths still work", 
     dir,
   );
   assert.equal(absolute.evidence.length, 1, "absolute asset paths stay supported");
-  fs.rmSync(dir, { recursive: true });
 });
 
-test("parseCanonical and the unknown-id fallback are the same canonical adapter", () => {
-  const dir = tmpDir();
+test("parseCanonical and the unknown-id fallback are the same canonical adapter", (t) => {
+  const dir = tmpDir(t);
   fs.writeFileSync(
     path.join(dir, "metadata.json"),
     JSON.stringify({
@@ -161,11 +166,10 @@ test("parseCanonical and the unknown-id fallback are the same canonical adapter"
     !listAdapters().some((a) => a.id === canonicalAdapter.id),
     "canonical is a fallback, not a listed adapter",
   );
-  fs.rmSync(dir, { recursive: true });
 });
 
-test("artifacts.json: writer and reader agree, and the object form is accepted", () => {
-  const dir = tmpDir();
+test("artifacts.json: writer and reader agree, and the object form is accepted", (t) => {
+  const dir = tmpDir(t);
   writeAdapterArtifacts(dir, {
     metadata: {
       adapter: "x",
@@ -189,7 +193,6 @@ test("artifacts.json: writer and reader agree, and the object form is accepted",
 
   fs.writeFileSync(path.join(dir, "artifacts.json"), JSON.stringify(42));
   assert.throws(() => loadAdapterArtifacts(dir), /artifacts\.json must be/);
-  fs.rmSync(dir, { recursive: true });
 });
 
 test("shared native seam: metadata projection and log classification", () => {
