@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readBundle } from "../evidence/store.js";
 import type { Evidence, EvidenceBundle } from "../evidence/model.js";
-import { getAdapter } from "../adapter/registry.js";
+import { getAdapter, registerAdapter } from "../adapter/registry.js";
 import type { FrameworkAdapter } from "../adapter/types.js";
 
 /**
@@ -15,7 +15,8 @@ import type { FrameworkAdapter } from "../adapter/types.js";
  * each platform's deterministic status claims.
  *
  * Read-only and deterministic: no model call, no side effects. The grouping
- * is pure evidence shaping for the oracle / a human reviewer.
+ * is pure evidence shaping for the oracle / a human reviewer. Adapter
+ * `kind` is read from the one adapter registry (see `adapter/registry.ts`).
  */
 
 export interface PlatformRun {
@@ -44,15 +45,19 @@ export interface ConsistencyGroup {
   singlePlatform: boolean;
 }
 
-const REGISTERED: Record<string, FrameworkAdapter> = {};
-
-/** Register a specialized adapter so platform labels stay accurate. */
+/**
+ * Register a specialized adapter so platform labels stay accurate.
+ *
+ * @deprecated The adapter registry is the single store; call
+ * `registerAdapter` instead. Kept as a thin alias so existing callers keep
+ * working — it no longer maintains a second, parallel registry.
+ */
 export function registerPlatformAdapter(adapter: FrameworkAdapter): void {
-  REGISTERED[adapter.id] = adapter;
+  registerAdapter(adapter);
 }
 
 function adapterKind(id: string): "web" | "native" | undefined {
-  return (REGISTERED[id] ?? getAdapter(id))?.kind;
+  return getAdapter(id)?.kind;
 }
 
 function platformLabel(bundle: EvidenceBundle): string {

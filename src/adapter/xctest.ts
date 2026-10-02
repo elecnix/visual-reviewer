@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { buildBundleFromAdapter } from "./build.js";
-import type {
-  AdapterArtifacts,
-  AdapterEvidence,
-  AdapterStatus,
-  FrameworkAdapter,
-} from "./types.js";
+import {
+  defineNativeAdapter,
+  logEventsToEvidence,
+  nativeMetadata,
+  type NativeLogEvent,
+} from "./native.js";
+import type { AdapterArtifacts, AdapterEvidence, AdapterStatus } from "./types.js";
 
 /**
  * XCTest adapter (Phase-3 roadmap: native adapters).
@@ -32,7 +32,8 @@ import type {
  *     "attachments": { "video": "files/run.mp4" }
  *   }
  *
- * `tree`, `screenshot` and attachment paths are relative to the manifest dir.
+ * `tree`, `screenshot` and attachment paths are relative to the manifest dir
+ * and are resolved by the bundle builder, not here.
  */
 
 export interface XCTestManifest {
@@ -66,24 +67,14 @@ interface XCTestAssert {
   error?: string;
 }
 
-interface XCTestLog {
-  level: string;
-  message: string;
-  timestamp: number;
-}
+interface XCTestLog extends NativeLogEvent {}
 
-export const xctestAdapter: FrameworkAdapter = {
+export const xctestAdapter = defineNativeAdapter({
   id: "xctest",
   label: "XCTest / XCUITest (Apple native)",
   version: "1.0.0",
-  kind: "native",
-  parse(dir: string): AdapterArtifacts {
-    return parseXCTest(dir);
-  },
-  build(dir: string) {
-    return buildBundleFromAdapter(parseXCTest(dir), dir);
-  },
-};
+  parse: parseXCTest,
+});
 
 export function parseXCTest(dir: string): AdapterArtifacts {
   const manifest = JSON.parse(
@@ -98,7 +89,7 @@ export function parseXCTest(dir: string): AdapterArtifacts {
         type: "screenshot",
         timestamp: h.timestamp,
         content: { hierarchy: h.name },
-        asset: path.join(dir, h.screenshot),
+        asset: h.screenshot,
         metadata: { hierarchy: h.name, seq },
       });
     }
@@ -110,32 +101,26 @@ export function parseXCTest(dir: string): AdapterArtifacts {
     });
   });
 
-  for (const ev of manifest.logs ?? []) {
-    evidence.push({
-      type: /\berror\b/i.test(ev.level) ? "crash" : "console_event",
-      timestamp: ev.timestamp,
-      content: { level: ev.level, message: ev.message, source: "xctest" },
-    });
-  }
+  evidence.push(...logEventsToEvidence(manifest.logs, "xctest"));
 
-  const attachments: Record<string, string> = {};
-  for (const [name, file] of Object.entries(manifest.attachments ?? {})) {
-    attachments[name] = path.join(dir, file);
-  }
-
+  // `attachments` are kept verbatim: the builder resolves them against the
+  // artifact dir, exactly like `asset`.
   return {
-    metadata: {
-      adapter: "xctest",
-      schemaVersion: 1,
-      runId: manifest.runId,
-      title: manifest.title,
-      file: manifest.file,
-      project: manifest.project ?? manifest.os,
-      status: manifest.status,
-      durationMs: manifest.durationMs,
-    },
+    metadata: nativeMetadata(
+      "xctest",
+      {
+        runId: manifest.runId,
+        title: manifest.title,
+        file: manifest.file,
+        project: manifest.project,
+        status: manifest.status,
+        durationMs: manifest.durationMs,
+      },
+      // XCTest reports the platform as `os` when there is no `project`.
+      { projectFallback: manifest.os },
+    ),
     assertions: manifest.assertEvents ?? [],
     evidence,
-    artifacts: attachments,
+    artifacts: manifest.attachments ?? {},
   };
 }
