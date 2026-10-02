@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture review — visual-reviewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 5 4; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .leakline { stroke: #dc2626; stroke-width: 2; }
+      .fade { opacity: .38; }
+      .modlabel { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+  <main class="max-w-6xl mx-auto px-6 py-12 space-y-12">
+
+    <!-- ===================== HEADER ===================== -->
+    <header class="space-y-6">
+      <div class="flex items-baseline justify-between flex-wrap gap-3">
+        <h1 class="font-serif text-4xl tracking-tight">visual-reviewer</h1>
+        <div class="text-xs uppercase tracking-wider text-slate-500">Architecture review · 2 October 2026 · 30 modules · 4 080 LOC</div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-600 border-y border-stone-200 py-3">
+        <span class="flex items-center gap-2"><span class="inline-block w-6 h-3 border border-slate-400 bg-white rounded-sm"></span> module</span>
+        <span class="flex items-center gap-2"><svg width="26" height="6"><line class="seam" x1="0" y1="3" x2="26" y2="3" stroke="#64748b" stroke-width="2"/></svg> seam</span>
+        <span class="flex items-center gap-2"><svg width="26" height="6"><line class="leakline" x1="0" y1="3" x2="26" y2="3"/></svg> leakage</span>
+        <span class="flex items-center gap-2"><span class="inline-block w-6 h-3 deep rounded-sm"></span> deep module</span>
+        <span class="flex items-center gap-2"><span class="inline-block w-6 h-1.5 bg-red-500 rounded-sm"></span> shallow (interface ≈ implementation)</span>
+      </div>
+
+      <div class="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-5">
+        <div class="text-xs uppercase tracking-wider text-amber-800 font-semibold mb-2">Condition under every candidate</div>
+        <p class="text-sm text-amber-950 leading-relaxed">
+          <span class="font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded">package.json:39</span>
+          runs <span class="font-mono text-xs">tsc &amp;&amp; node --test test/*.test.mjs</span> — a non-recursive
+          <code>.mjs</code>-only glob. The four suites in <span class="font-mono text-xs">test/adapter/</span> and
+          <span class="font-mono text-xs">test/cross/</span> have never executed.
+          Coverage today is <strong>2 of 30 modules</strong>, and the two that are tested —
+          <span class="font-mono text-xs">extractVerdictJson</span> and <span class="font-mono text-xs">clusterRegressions</span> —
+          are both pure leaves. The centre of the system has no test surface at all.
+          Deepening is what buys that surface back.
+        </p>
+      </div>
+    </header>
+
+    <!-- ===================== CANDIDATES ===================== -->
+    <section id="candidates" class="space-y-10">
+
+      <!-- ---------- C1 ---------- -->
+      <article id="c1" class="rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-7 border-b border-stone-100 space-y-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">1 · There is no Judgement module</h2>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-600 leading-relaxed">
+            src/oracle/judge.ts:20 · src/oracle/schema.ts:7 · src/oracle/cluster.ts:87 · src/ci/github.ts:16,74 ·
+            src/report/markdown.ts:6 · src/report/html.ts:5 · src/oracle/bench.ts:43 · src/evidence/history.ts
+          </div>
+        </div>
+
+        <div class="p-7 space-y-6">
+          <!-- diagrams -->
+          <div class="grid md:grid-cols-2 gap-5">
+            <div>
+              <div class="modlabel text-slate-400 mb-2">Before — 11 sinks, each re-derives</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  J["Judgement<br/><i>loose bag</i>"]
+  J -.-> A["markdown<br/>report"]
+  J -.-> B["html<br/>report"]
+  J -.-> C["html<br/>index"]
+  J -.-> D["cli stdout"]
+  J -.-> E["step<br/>summary"]
+  J -.-> F["::warning<br/>annotation"]
+  J -.-> G["history<br/>record"]
+  J -.-> H["verdict.json"]
+  J -.-> I["bench<br/>report"]
+  J -.-> K["cluster<br/>input"]
+  J -.-> L["run<br/>summary"]
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  class A,B,C,D,E,F,G,H,I,K,L leak
+                </pre>
+              </div>
+              <div class="mt-3 space-y-1 text-xs text-slate-600">
+                <div class="flex items-center gap-2"><span class="w-24 modlabel text-slate-400 shrink-0">material</span><span class="font-mono">cluster.ts:96 incl. UNCERTAIN</span></div>
+                <div class="flex items-center gap-2"><span class="w-24 modlabel text-slate-400 shrink-0">&nbsp;</span><span class="font-mono">github.ts:78 excl. UNCERTAIN</span></div>
+                <div class="flex items-center gap-2"><span class="w-24 modlabel text-slate-400 shrink-0">&nbsp;</span><span class="font-mono">bench.ts:47 third rule</span></div>
+              </div>
+            </div>
+
+            <div>
+              <div class="modlabel text-slate-400 mb-2">After — one module owns the derivations</div>
+              <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  subgraph D["verdict module — deep"]
+    direction TB
+    I1["interface:<br/>isMaterial · icon · pct<br/>passedOf · oneLine"]
+    I2["implementation:<br/>Verdict schema · Judgement<br/>materiality rule · reading"]
+    I1 --> I2
+  end
+  D --> A["markdown"]
+  D --> B["html"]
+  D --> E["step summary"]
+  D --> F["annotation"]
+  D --> G["history"]
+  D --> H["bench"]
+  D --> I["cluster"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class I1,I2 deep
+                </pre>
+              </div>
+              <div class="mt-3 text-xs text-slate-600">
+                One seam. Nine call sites. Each sink keeps only its presentation.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-5 border-t border-stone-100 pt-5">
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Problem</div>
+              <p class="text-slate-700 leading-relaxed">
+                Eleven sinks re-derive the same facts off a loose <span class="font-mono text-xs">Judgement</span> bag —
+                and "material verdict" is defined three times with <strong>different membership</strong>.
+                Clustering groups UNCERTAIN into a root cause; CI annotations skip it; the benchmark calls it "incorrect".
+                Three answers to one question, no compile error, no test.
+              </p>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Solution</div>
+              <p class="text-slate-700 leading-relaxed">
+                Deepen <span class="font-mono text-xs">schema.ts</span> into the module that owns a verdict end to end:
+                parsing, the materiality rule, and presentation-neutral projections
+                (icon, percent, assertion count, first line). Sinks render; they no longer decide.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="modlabel text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-700">
+              <li>· locality: materiality lives in one module</li>
+              <li>· leverage: 9 sinks, 1 rule</li>
+              <li>· interface shrinks; implementation absorbs helpers</li>
+              <li>· duplication test collapses 3 icon maps into 1</li>
+              <li>· reading a verdict becomes one testable call</li>
+              <li>· a new verdict member fails loudly at one seam</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- ---------- C2 ---------- -->
+      <article id="c2" class="rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-7 border-b border-stone-100 space-y-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">2 · The adapter contract is prose, and the registry is inert</h2>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">ports &amp; adapters</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-600 leading-relaxed">
+            src/adapter/registry.ts:16,25,47,52 · src/adapter/types.ts:19,53 · src/adapter/build.ts:41 ·
+            src/adapter/load.ts:20,45 · src/cross/platform.ts:47 · src/adapter/appium.ts:112 · src/adapter/xctest.ts:101,123
+          </div>
+        </div>
+
+        <div class="p-7 space-y-6">
+          <div class="grid md:grid-cols-2 gap-5">
+            <div>
+              <div class="modlabel text-slate-400 mb-2">Before — contract stated in three places</div>
+              <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  DOC["types.ts:53<br/><i>&quot;asset is artifacts-dir-relative&quot;</i>"]
+  IMP["build.ts:41<br/><b>path.resolve(asset)</b><br/>cwd-relative"]
+  AD1["appium.ts:112<br/>path.join(dir, …)"]
+  AD2["xctest.ts:101<br/>path.join(dir, …)"]
+  DOC -.leak.-> IMP
+  AD1 -.leak.-> IMP
+  AD2 -.leak.-> IMP
+  REG["registry.ts:16<br/>new Map()"]
+  REGC["cross/platform.ts:47<br/>REGISTERED = {}"]
+  NOW["no src/ file<br/>ever registers"]
+  REG --- NOW
+  REGC --- NOW
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  class DOC,AD1,AD2 leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <div class="modlabel text-slate-400 mb-2">After — one adapter seam, documented by its shape</div>
+              <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  subgraph D["adapter intake — deep"]
+    direction TB
+    I1["interface:<br/>parse(dir) → AdapterArtifacts"]
+    I2["implementation:<br/>path resolution · asset copying<br/>id assignment · bundle write<br/>registry · artifacts.json shape"]
+    I1 --> I2
+  end
+  A1["appium"] --> D
+  A2["xctest"] --> D
+  A3["playwright"] --> D
+  A4["a 4th adapter"] --> D
+  D --> B["EvidenceBundle"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class I1,I2 deep
+                </pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-5 border-t border-stone-100 pt-5">
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Problem</div>
+              <p class="text-slate-700 leading-relaxed">
+                The documented contract and the implementation disagree, so both existing adapters
+                pre-join the dir to compensate. A fourth adapter written to the docs silently drops
+                <em>every asset</em> — <span class="font-mono text-xs">build.ts:44</span> only
+                <span class="font-mono text-xs">console.warn</span>s — and the oracle judges a test with no screenshots.
+                Two registries exist; neither is ever populated. <span class="font-mono text-xs">artifacts.json</span>
+                is documented as an object and parsed as an array, invisible because the only test is a writer↔reader round trip.
+              </p>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Solution</div>
+              <p class="text-slate-700 leading-relaxed">
+                Make the adapter seam real: one registry, populated at import; asset paths resolved
+                relative to the artifacts dir inside the module so no adapter has to know;
+                <span class="font-mono text-xs">parseCanonical</span> folded into it; the
+                <span class="font-mono text-xs">artifacts.json</span> shape decided once.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="modlabel text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-700">
+              <li>· seam becomes real: two adapters, two harnesses</li>
+              <li>· an adapter is only new framework knowledge</li>
+              <li>· locality: path rules stop leaking outward</li>
+              <li>· a silent-asset-loss failure becomes a type error</li>
+              <li>· one registry, not two empty ones</li>
+              <li>· cross-platform labels stop depending on who registered</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- ---------- C3 ---------- -->
+      <article id="c3" class="rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-7 border-b border-stone-100 space-y-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">3 · "How does this evidence reach the model" is open-coded</h2>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-600 leading-relaxed">
+            src/context/builder.ts:91,123-126,180,184,188,205 · src/evidence/model.ts:8 · src/playwright/trace.ts:182 ·
+            src/adapter/appium.ts:148,152-161 · src/adapter/xctest.ts:115,129-138 · src/report/html.ts
+          </div>
+        </div>
+
+        <div class="p-7 space-y-6">
+          <div class="grid md:grid-cols-2 gap-5">
+            <div>
+              <div class="modlabel text-slate-400 mb-2">Before — an open set, rendered by if-chains</div>
+              <div class="rounded-lg border border-stone-200 bg-white p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  T["EvidenceType<br/><i>13 members</i>"]
+  T --> P1["7 produced"]
+  T --> P2["5 produced by nobody"]
+  T --> P3["dom_snapshot:<br/><b>produced, never rendered</b>"]
+  B["builder.ts<br/>if network / if console / if crash<br/>if aria / if native_ui_tree<br/>if native_state / if user_action"]
+  P1 --> B
+  P3 -.->|falls through silently| X["oracle never sees it"]
+  H["html.ts"] -.->|second renderer| B
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#7f1d1d;
+  class X,P3 leak
+                </pre>
+              </div>
+              <div class="mt-3 text-xs text-slate-600 leading-relaxed">
+                <span class="font-mono">content: unknown</span> means a new type compiles, is stored,
+                is judged against, and is invisible. No compile error, no warning.
+              </div>
+            </div>
+            <div>
+              <div class="modlabel text-slate-400 mb-2">After — a closed set, one renderer per type</div>
+              <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  T["EvidenceType<br/><i>closed set</i>"]
+  subgraph D["evidence rendering — deep"]
+    direction TB
+    I1["interface:<br/>render(evidence) → parts"]
+    I2["implementation:<br/>format · cap · priority<br/>unknown-type policy"]
+    I1 --> I2
+  end
+  T --> D
+  D --> M["model context"]
+  N["new evidence type"] -.->|"no renderer → fails here"| D
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class I1,I2 deep
+                </pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- duplicate-mass diagram -->
+          <div class="grid md:grid-cols-2 gap-5 border-t border-stone-100 pt-5">
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Problem</div>
+              <p class="text-slate-700 leading-relaxed">
+                Evidence-shape knowledge is restated in seven modules, and the two native adapters are
+                near-verbatim clones: the same object literal at
+                <span class="font-mono text-xs">appium.ts:85</span> / <span class="font-mono text-xs">xctest.ts:75</span>,
+                the same log→<span class="font-mono text-xs">crash|console_event</span> regex in both
+                (<span class="font-mono text-xs">appium.ts:148</span>, <span class="font-mono text-xs">xctest.ts:115</span>),
+                a duplicated metadata projection that has already <em>diverged</em>
+                (<span class="font-mono text-xs">xctest.ts:133</span> adds a <span class="font-mono text-xs">?? manifest.os</span>).
+              </p>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Solution</div>
+              <p class="text-slate-700 leading-relaxed">
+                Deepen the rendering step into a module keyed by a <strong>closed</strong> evidence type set,
+                with an explicit policy for a type with no renderer. Let the shared adapter knowledge
+                (metadata projection, log classification) live once behind the seam.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="modlabel text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-700">
+              <li>· locality: evidence semantics stop scattering</li>
+              <li>· a forgotten evidence type becomes a build failure</li>
+              <li>· interface: one call replaces eight if-chains</li>
+              <li>· duplication test: ~60 lines of clone deleted</li>
+              <li>· HTML and model renderers share one ranking</li>
+              <li>· "the screenshots" stops having four meanings</li>
+            </ul>
+          </div>
+
+          <div class="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-4 text-sm text-amber-950">
+            Also here: <span class="font-mono text-xs">selectScreenshots</span> re-derives the asset root from
+            <span class="font-mono text-xs">bundle.file</span> — which <span class="font-mono text-xs">model.ts:57</span>
+            defines as the <em>spec file path</em> — so <span class="font-mono text-xs">builder.ts:211</span> fabricates a
+            synthetic bundle to satisfy it. <span class="font-mono text-xs">followup.ts:108</span> solves the identical
+            problem correctly with an explicit dir. That fabrication is the only reason the function is exported.
+          </div>
+        </div>
+      </article>
+
+      <!-- ---------- C4 ---------- -->
+      <article id="c4" class="rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-7 border-b border-stone-100 space-y-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">4 · The judged run has no seam — one function, three callers</h2>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-600 leading-relaxed">
+            src/oracle/judge.ts:26-203 (judgeBundle), :77-101 (retry ladder), :104-160 (follow-up),
+            :206-232 (judgeBundles), :253-269 (writeRunIndex) · src/oracle/bench.ts:76 · src/cli.ts:231
+          </div>
+        </div>
+
+        <div class="p-7 space-y-6">
+          <div class="grid md:grid-cols-2 gap-5">
+            <div>
+              <div class="modlabel text-slate-400 mb-2">Before — one long function, everything inside</div>
+              <div class="relative rounded-lg border border-slate-200 bg-stone-50 p-4 h-[320px] overflow-hidden">
+                <div class="space-y-1.5 text-[11px]">
+                  <div class="border border-slate-300 bg-white rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-slate-700">read bundle · resolve model</span></div>
+                  <div class="border border-slate-300 bg-white rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-slate-700">expectations + feedback</span><span class="text-red-600">✗ prompt built twice</span></div>
+                  <div class="border border-slate-300 bg-white rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-slate-700">baseline · flakiness</span></div>
+                  <div class="border-2 border-red-400 bg-red-50 rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-red-800">retry ×3 — re-sends every image</span><span class="text-red-600">✗ untested</span></div>
+                  <div class="border-2 border-red-400 bg-red-50 rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-red-800">follow-up gate + 2 more calls</span><span class="text-red-600">✗ untested</span></div>
+                  <div class="border border-slate-300 bg-white rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-slate-700">write md · html · verdict.json</span></div>
+                  <div class="border border-slate-300 bg-white rounded px-2 py-1.5 flex justify-between"><span class="font-mono text-slate-700">history record</span></div>
+                  <div class="border-t border-dashed border-slate-400 mt-2 pt-2 space-y-1.5">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400">callers</div>
+                    <div class="px-2 py-1.5 rounded bg-white border border-slate-300 flex justify-between"><span class="font-mono text-slate-700">cli judgeBundles</span><span class="text-[10px] text-slate-500">full path</span></div>
+                    <div class="px-2 py-1.5 rounded bg-red-50 border border-red-300 flex justify-between"><span class="font-mono text-red-800">bench:76 judgeBundle</span><span class="text-[10px] text-red-600">skips index + CI</span></div>
+                    <div class="px-2 py-1.5 rounded bg-amber-50 border border-amber-300 flex justify-between"><span class="font-mono text-amber-900">cli:231 exit code</span><span class="text-[10px] text-amber-700">substring match</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="modlabel text-slate-400 mb-2">After — a run module with a narrow interface</div>
+              <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px]">
+                <pre class="mermaid">
+flowchart TD
+  subgraph D["judged run — deep"]
+    direction TB
+    I1["interface:<br/>run(bundles, config) → RunResult"]
+    I2["implementation:<br/>retry ladder · follow-up gate<br/>report writes · history<br/>index · clusters · CI · exit policy"]
+    I1 --> I2
+  end
+  D --> CLI["cli"]
+  D --> BENCH["bench — same path"]
+  D --> T["tests — fake model"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class I1,I2 deep
+                </pre>
+              </div>
+              <div class="mt-3 text-xs text-slate-600 leading-relaxed">
+                §18's decision metric then measures the same path production runs.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-5 border-t border-stone-100 pt-5">
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Problem</div>
+              <p class="text-slate-700 leading-relaxed">
+                <span class="font-mono text-xs">judgeBundle</span> is ~160 lines holding the retry ladder,
+                the follow-up gate, five side effects and baseline selection — with no seam, so no test.
+                The ladder re-runs <span class="font-mono text-xs">buildUserContent</span> each attempt and re-sends
+                <em>all</em> images; the <span class="font-mono text-xs">×3</span> lives here while the cost cap lives in
+                <span class="font-mono text-xs">builder.ts</span>. The benchmark bypasses the production path, and the
+                exit code is decided by substring-matching <span class="font-mono text-xs">"unparseable"</span> in an error
+                string the callee built.
+              </p>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Solution</div>
+              <p class="text-slate-700 leading-relaxed">
+                One module owns a judged run end to end and returns a typed result that already knows its
+                materiality and exit policy. Retry budget and the evidence cap move behind the same seam so
+                they can be reasoned about together.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="modlabel text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-700">
+              <li>· locality: retry policy stops straddling two modules</li>
+              <li>· bench measures the path production runs</li>
+              <li>· exit policy becomes a value, not a substring</li>
+              <li>· interface: three callers, one entry point</li>
+              <li>· side effects become an explicit list</li>
+              <li>· the prompt is built once</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- ---------- C5 ---------- -->
+      <article id="c5" class="rounded-xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-7 border-b border-stone-100 space-y-4">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">5 · The model is not a seam</h2>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+              <span class="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">mock</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-600 leading-relaxed">
+            src/oracle/judge.ts:81,112,140 (three generateText call sites) · src/oracle/provider.ts:22 ·
+            src/oracle/schema.ts · src/oracle/cluster.ts · src/oracle/followup.ts
+          </div>
+        </div>
+
+        <div class="p-7 space-y-6">
+          <div class="grid md:grid-cols-2 gap-5">
+            <div>
+              <div class="modlabel text-slate-400 mb-2">Before — the import is the interface</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[300px]">
+                <div class="space-y-2 h-full">
+                  <div class="border-2 border-red-400 bg-red-50 rounded p-3 text-center">
+                    <div class="modlabel text-red-700">hard dependency</div>
+                    <div class="font-mono text-sm text-red-900 mt-1">import { generateText } from "ai"</div>
+                  </div>
+                  <div class="text-center text-red-500 text-xs">↓ called 3× in one function</div>
+                  <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
+                    <div class="border border-slate-300 bg-white rounded p-2 font-mono">verdict</div>
+                    <div class="border border-slate-300 bg-white rounded p-2 font-mono">evidence req</div>
+                    <div class="border border-slate-300 bg-white rounded p-2 font-mono">final verdict</div>
+                  </div>
+                  <div class="border border-slate-300 bg-white rounded p-3 text-center">
+                    <div class="modlabel text-slate-500">only reachable through</div>
+                    <div class="font-mono text-xs text-slate-700 mt-1">judgeBundle(path, config)</div>
+                    <div class="text-[10px] text-slate-500 mt-1">which also writes 5 files</div>
+                  </div>
+                  <div class="border border-red-300 bg-red-50 rounded p-2 text-center text-[11px] text-red-800">
+                    no test can reach the retry ladder or the follow-up gate
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="modlabel text-slate-400 mb-2">After — two adapters, one real, one fake</div>
+              <div class="rounded-lg border border-slate-200 bg-white p-4 h-[300px]">
+                <pre class="mermaid">
+flowchart TD
+  subgraph D["judged run — deep"]
+    direction TB
+    I1["interface:<br/>complete(prompt, parts) → text"]
+    I2["implementation:<br/>retry · gate · persistence"]
+    I1 --> I2
+  end
+  P["production adapter<br/>ai / OpenRouter"] --> D
+  F["scripted adapter<br/>tests · bench replay"] --> D
+  D --> V["Verdict schema"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class I1,I2 deep
+                </pre>
+              </div>
+              <div class="mt-3 text-xs text-slate-600 leading-relaxed">
+                Two adapters, so the seam is real — not hypothetical.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-5 border-t border-stone-100 pt-5">
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Problem</div>
+              <p class="text-slate-700 leading-relaxed">
+                <span class="font-mono text-xs">judgeBundle</span> is the oracle's only interface and it makes a
+                network call. A cheap-model shape change, a parse failure and a timeout are therefore
+                indistinguishable in a test — so none of the ladder is tested, which is why it has needed
+                three separate hardening commits (<span class="font-mono text-xs">a4a198e</span>,
+                <span class="font-mono text-xs">787976f</span>).
+              </p>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="modlabel text-slate-400">Solution</div>
+              <p class="text-slate-700 leading-relaxed">
+                Put a completion seam between the oracle and the provider. The retry ladder and the
+                follow-up gate move behind it, and the already-deep
+                <span class="font-mono text-xs">cluster</span> and <span class="font-mono text-xs">schema</span> modules
+                gain a sibling that can be tested the same way.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="modlabel text-slate-400 mb-2">Wins</div>
+            <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-700">
+              <li>· two adapters make the seam real</li>
+              <li>· flaky-model output becomes a fixture, not a rerun</li>
+              <li>· leverage: the ladder and the gate finally get tests</li>
+              <li>· provider swap stops touching the oracle</li>
+              <li>· cost per run becomes assertable</li>
+              <li>· no interface change for callers</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+    </section>
+
+    <!-- ===================== TOP RECOMMENDATION ===================== -->
+    <section id="top-recommendation" class="rounded-xl deep text-stone-100 p-9 space-y-4">
+      <div class="modlabel text-stone-400">Top recommendation</div>
+      <h2 class="font-serif text-3xl">Start with 1 · There is no Judgement module</h2>
+      <p class="text-stone-300 leading-relaxed max-w-3xl">
+        It is the only candidate whose friction is already producing three different answers to one question in
+        shipped behaviour, it is the smallest change with the widest leverage — nine sinks and the CLI stop deciding —
+        and it is the prerequisite for the others: a typed result is what makes the run module (4) and the model
+        seam (5) testable at all.
+        <a href="#c1" class="text-emerald-300 underline underline-offset-4 ml-1">Jump to candidate 1</a>
+      </p>
+      <div class="grid sm:grid-cols-3 gap-4 pt-3 text-sm">
+        <div class="border-l-2 border-emerald-400/60 pl-3">
+          <div class="modlabel text-stone-500">then</div>
+          <div class="text-stone-200">2 · adapter seam — sharpest latent failure</div>
+        </div>
+        <div class="border-l-2 border-stone-600 pl-3">
+          <div class="modlabel text-stone-500">and</div>
+          <div class="text-stone-200">3 · close the evidence type set</div>
+        </div>
+        <div class="border-l-2 border-stone-600 pl-3">
+          <div class="modlabel text-stone-500">last</div>
+          <div class="text-stone-200">4 · run module · 5 · model seam</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="text-xs text-slate-400 pt-2">
+      Candidates 1–3 are Strong; 4–5 are Worth exploring. None contradict a recorded decision — this repo has no <span class="font-mono">docs/adr/</span>.
+    </footer>
+
+  </main>
+  </body>
+</html>
