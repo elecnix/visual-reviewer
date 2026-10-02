@@ -7,7 +7,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
       import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+      // "antiscript", not "loose" (Cite): loose allows <script> and event
+      // handlers in labels. "strict" would be stricter still but encodes ALL
+      // html in labels, which would render every <br/> in this report's node
+      // labels as literal text and collapse the diagrams. antiscript keeps the
+      // line breaks and removes the script vector. See mermaid.js.org/config/usage.
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "antiscript" });
     </script>
     <style>
       .seam { stroke-dasharray: 5 4; }
