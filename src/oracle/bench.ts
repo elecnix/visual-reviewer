@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { findBundles } from "../evidence/store.js";
 import { judgeBundle, type Judgement } from "./judge.js";
+import { VERDICT_KINDS, isFailing } from "./schema.js";
 import type { OracleConfig } from "../config.js";
 
 /**
@@ -37,15 +38,18 @@ export interface BenchReport {
   cases: BenchCaseResult[];
 }
 
-const VALID_EXPECTED = ["PASS", "REGRESSION", "FAIL", "UNCERTAIN"];
+/** Every expected-verdict string the harness accepts: the verdict vocabulary. */
+const VALID_EXPECTED: readonly string[] = VERDICT_KINDS;
 
-function classify(expected: string, actual?: string): "correct" | "falsePositive" | "falseNegative" | "missed" | "incorrect" {
+/** Bucket one benchmark case against its expectation. Exported for tests. */
+export function classify(expected: string, actual?: string): "correct" | "falsePositive" | "falseNegative" | "missed" | "incorrect" {
   if (!actual) return "missed";
   if (actual === expected) return "correct";
-  // A REGRESSION/FAIL verdict on a scenario expecting PASS is a false positive.
-  // A PASS on a scenario expecting REGRESSION/FAIL is a false negative.
-  const badActual = actual === "REGRESSION" || actual === "FAIL";
-  const badExpected = expected === "REGRESSION" || expected === "FAIL";
+  // A REGRESSION/FAIL verdict on a scenario expecting PASS is a false positive;
+  // a PASS where a REGRESSION/FAIL was expected is a false negative. UNCERTAIN
+  // is neither — it is not a claim that the app is broken.
+  const badActual = isFailing(actual);
+  const badExpected = isFailing(expected);
   if (badActual && !badExpected) return "falsePositive";
   if (!badActual && badExpected) return "falseNegative";
   return "incorrect"; // e.g. UNCERTAIN vs either — counted as incorrect only
