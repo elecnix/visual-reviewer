@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  AdapterArtifactIndex,
   AdapterArtifacts,
   AdapterAssertion,
   AdapterEvidence,
@@ -17,7 +18,7 @@ import type {
  *   sourceCode        optional test spec text (also accepts sourceCode.json)
  *   assertions.json   optional [{ title, passed, error? }]
  *   evidence.json     optional [{ type, timestamp, content, asset?, metadata? }]
- *   artifacts.json    optional { name: relativePath }
+ *   artifacts.json    optional [{ name, path }] (object form also accepted)
  */
 
 export function loadAdapterArtifacts(dir: string): AdapterArtifacts {
@@ -40,13 +41,11 @@ export function loadAdapterArtifacts(dir: string): AdapterArtifacts {
   };
 
   const artifactIndex = path.join(dir, "artifacts.json");
-  const artifactIndexMap: Record<string, string> = {};
+  const artifactIndexMap: AdapterArtifactIndex = {};
   if (fs.existsSync(artifactIndex)) {
-    const entries = JSON.parse(fs.readFileSync(artifactIndex, "utf8")) as Array<{
-      name: string;
-      path: string;
-    }>;
-    for (const entry of entries) artifactIndexMap[entry.name] = entry.path;
+    for (const [name, file] of readArtifactIndex(artifactIndex)) {
+      artifactIndexMap[name] = file;
+    }
   }
 
   return {
@@ -56,6 +55,40 @@ export function loadAdapterArtifacts(dir: string): AdapterArtifacts {
     evidence: readJson<AdapterEvidence>("evidence.json"),
     artifacts: artifactIndexMap,
   };
+}
+
+/**
+ * Read `artifacts.json` into the one in-memory shape (`name -> path`).
+ *
+ * The writer emits the array form written by `writeAdapterArtifacts`; the
+ * object form documented in earlier revisions of the contract is accepted too
+ * so a hand-written or third-party index is not silently lost. Anything else
+ * fails loudly instead of yielding an empty index.
+ */
+function readArtifactIndex(file: string): [string, string][] {
+  const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
+  if (Array.isArray(parsed)) {
+    return parsed.map((entry, i) => {
+      const e = entry as { name?: unknown; path?: unknown };
+      if (typeof e?.name !== "string" || typeof e?.path !== "string") {
+        throw new Error(
+          `artifacts.json entry ${i} must be { name: string, path: string }`,
+        );
+      }
+      return [e.name, e.path] as [string, string];
+    });
+  }
+  if (parsed && typeof parsed === "object") {
+    return Object.entries(parsed as Record<string, unknown>).map(
+      ([name, file]) => {
+        if (typeof file !== "string") {
+          throw new Error(`artifacts.json entry "${name}" must map to a string path`);
+        }
+        return [name, file] as [string, string];
+      },
+    );
+  }
+  throw new Error('artifacts.json must be [{ name, path }] or { name: path }');
 }
 
 /** Persist canonical artifacts into a directory (test/sample fixture helper). */
@@ -84,6 +117,7 @@ export function writeAdapterArtifacts(dir: string, artifacts: AdapterArtifacts):
     );
   }
   if (artifacts.artifacts) {
+    // Canonical on-disk form of AdapterArtifactIndex (see readArtifactIndex).
     const entries = Object.entries(artifacts.artifacts).map(([name, file]) => ({
       name,
       path: file,
