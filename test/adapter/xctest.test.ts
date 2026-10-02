@@ -64,3 +64,33 @@ test("xctestAdapter.build persists a native-ui bundle with attachments", () => {
   assert.ok(fs.existsSync(path.join(dir, bundle.artifacts.video)), "video copied");
   fs.rmSync(dir, { recursive: true });
 });
+
+test("xctest falls back to `os` only when the manifest has no project", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ve-xctest-os-"));
+  fs.writeFileSync(
+    path.join(dir, "xctest.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      runId: "run-6",
+      title: "no project",
+      file: "NoProjectUITests.swift",
+      os: "iPadOS 19",
+      status: "passed",
+      durationMs: 10,
+      hierarchies: [{ name: "p", timestamp: 1, tree: "*[A]" }],
+    }),
+  );
+  assert.equal(parseXCTest(dir).metadata.project, "iPadOS 19", "os is the XCTest fallback");
+  const bundle = xctestAdapter.build(dir);
+  assert.equal(bundle.project, "iPadOS 19");
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("parseXCTest leaves asset paths relative to the artifact dir", () => {
+  const dir = fixtureDir();
+  const artifacts = parseXCTest(dir);
+  const shot = artifacts.evidence?.find((e) => e.type === "screenshot");
+  assert.equal(shot?.asset, "files/h-01.png", "the builder owns path resolution");
+  assert.equal(artifacts.artifacts?.video, "files/run/clip.mp4");
+  fs.rmSync(dir, { recursive: true });
+});

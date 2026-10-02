@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { buildBundleFromAdapter } from "./build.js";
-import type {
-  AdapterArtifacts,
-  AdapterEvidence,
-  AdapterStatus,
-  FrameworkAdapter,
-} from "./types.js";
+import {
+  defineNativeAdapter,
+  logEventsToEvidence,
+  nativeMetadata,
+  type NativeLogEvent,
+} from "./native.js";
+import type { AdapterArtifacts, AdapterEvidence, AdapterStatus } from "./types.js";
 
 /**
  * Appium adapter (Phase-3 roadmap: native adapters).
@@ -33,7 +33,8 @@ import type {
  *     "logEvents": [{ "level": "error", "message": "…", "timestamp": 3100 }]
  *   }
  *
- * `screenshot` and `visible` paths are relative to the manifest's directory.
+ * `screenshot` and `visible` paths are relative to the manifest's directory
+ * and are resolved by the bundle builder, not here.
  */
 
 export interface AppiumManifest {
@@ -76,24 +77,14 @@ interface AppiumNetwork {
   timestamp: number;
 }
 
-interface AppiumLog {
-  level: string;
-  message: string;
-  timestamp: number;
-}
+interface AppiumLog extends NativeLogEvent {}
 
-export const appiumAdapter: FrameworkAdapter = {
+export const appiumAdapter = defineNativeAdapter({
   id: "appium",
   label: "Appium (iOS/Android)",
   version: "1.0.0",
-  kind: "native",
-  parse(dir: string): AdapterArtifacts {
-    return parseAppium(dir);
-  },
-  build(dir: string) {
-    return buildBundleFromAdapter(parseAppium(dir), dir);
-  },
-};
+  parse: parseAppium,
+});
 
 export function parseAppium(dir: string): AdapterArtifacts {
   const manifest = JSON.parse(
@@ -109,7 +100,7 @@ export function parseAppium(dir: string): AdapterArtifacts {
         type: "screenshot",
         timestamp: step.timestamp,
         content: { action: step.action, target: step.target },
-        asset: path.join(dir, step.screenshot),
+        asset: step.screenshot,
         metadata: { step: seq, action: step.action },
       });
     }
@@ -143,25 +134,17 @@ export function parseAppium(dir: string): AdapterArtifacts {
     });
   }
 
-  for (const ev of manifest.logEvents ?? []) {
-    evidence.push({
-      type: /\berror\b/i.test(ev.level) ? "crash" : "console_event",
-      timestamp: ev.timestamp,
-      content: { level: ev.level, message: ev.message, source: "appium" },
-    });
-  }
+  evidence.push(...logEventsToEvidence(manifest.logEvents, "appium"));
 
   return {
-    metadata: {
-      adapter: "appium",
-      schemaVersion: 1,
+    metadata: nativeMetadata("appium", {
       runId: manifest.runId,
       title: manifest.title,
       file: manifest.file,
       project: manifest.project,
       status: manifest.status,
       durationMs: manifest.durationMs,
-    },
+    }),
     assertions: manifest.assertEvents ?? [],
     evidence,
     // No extra named artifacts beyond the per-step screenshots today.

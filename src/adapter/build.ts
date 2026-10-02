@@ -12,6 +12,11 @@ import type { AdapterArtifacts } from "./types.js";
  * references, mirroring the `assets/` convention the Playwright adapter
  * already uses — the oracle's `selectScreenshots` reads those bytes directly.
  * Every evidence entry receives a stable, review-friendly id and source tag.
+ *
+ * Asset resolution lives HERE, not in the adapters: `asset` (and every
+ * `artifacts` entry) is documented as a path relative to the artifacts dir,
+ * so a parser never has to know where that dir is. Absolute paths are still
+ * accepted, which keeps adapters that pre-join the dir working unchanged.
  */
 export function buildBundleFromAdapter(
   artifacts: AdapterArtifacts,
@@ -38,7 +43,7 @@ export function buildBundleFromAdapter(
       continue;
     }
 
-    const src = path.resolve(item.asset);
+    const src = path.resolve(dir, item.asset);
     if (!fs.existsSync(src)) {
       // Advisory: a missing asset must not sink the whole bundle.
       console.warn(
@@ -67,7 +72,7 @@ export function buildBundleFromAdapter(
 
   const namedArtifacts: Record<string, string> = {};
   for (const [name, file] of Object.entries(artifacts.artifacts ?? {})) {
-    const src = path.resolve(file);
+    const src = path.resolve(dir, file);
     if (!fs.existsSync(src)) continue;
     const fileName = path.basename(src);
     fs.writeFileSync(path.join(filesDir, fileName), fs.readFileSync(src));
