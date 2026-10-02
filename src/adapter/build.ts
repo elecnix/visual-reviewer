@@ -45,9 +45,12 @@ export function buildBundleFromAdapter(
 
     const src = path.resolve(dir, item.asset);
     if (!fs.existsSync(src)) {
-      // Advisory: a missing asset must not sink the whole bundle.
+      // Advisory: a missing asset must not sink the whole bundle. Name the
+      // resolved path and the dir it was resolved against — quoting only the
+      // raw `asset` gives no clue when the caller assumed a different base.
       console.warn(
-        `[visual-reviewer] ${metadata.adapter} adapter: missing asset "${item.asset}"`,
+        `[visual-reviewer] ${metadata.adapter} adapter: missing asset "${item.asset}" ` +
+          `(resolved to ${src}; "asset" is relative to the artifacts dir ${dir}, not the cwd)`,
       );
       continue;
     }
@@ -73,7 +76,15 @@ export function buildBundleFromAdapter(
   const namedArtifacts: Record<string, string> = {};
   for (const [name, file] of Object.entries(artifacts.artifacts ?? {})) {
     const src = path.resolve(dir, file);
-    if (!fs.existsSync(src)) continue;
+    if (!fs.existsSync(src)) {
+      // Was silently skipped: a named artifact that never lands is invisible in
+      // the bundle, and the run carries on as if it had been written.
+      console.warn(
+        `[visual-reviewer] ${metadata.adapter} adapter: missing named artifact "${name}" ` +
+          `(resolved to ${src}; paths in "artifacts" are relative to the artifacts dir ${dir}, not the cwd)`,
+      );
+      continue;
+    }
     const fileName = path.basename(src);
     fs.writeFileSync(path.join(filesDir, fileName), fs.readFileSync(src));
     namedArtifacts[name] = `files/${fileName}`;
