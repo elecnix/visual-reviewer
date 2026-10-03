@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "../dist/args.js";
@@ -18,6 +20,37 @@ import { resolveOracleConfig } from "../dist/config.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(root, "dist", "cli.js");
+
+const created = [];
+
+/**
+ * A fresh, empty temp dir, removed when this process exits.
+ *
+ * The CLI tests used to hard-code paths like /tmp/vr-empty-dir-abc and assert
+ * on them. Nothing created or cleaned them, so any earlier run — or any other
+ * process on the machine — could leave a bundle there and fail the assertion
+ * for a reason that has nothing to do with the CLI.
+ */
+function tmpDir() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vr-cli-"));
+  created.push(dir);
+  return dir;
+}
+
+/** A path inside a fresh temp dir which does NOT exist. */
+function missingPath() {
+  return path.join(tmpDir(), "absent");
+}
+
+process.on("exit", () => {
+  for (const dir of created) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+  }
+});
 
 /** Run the CLI and return its exit code plus stdout. Never throws on non-zero. */
 function run(args, env = {}) {
@@ -69,33 +102,39 @@ test("cli: --no-judge still routes to help, not to options.judge", () => {
 });
 
 test("cli: a missing output dir fails with exit 1 and a pointed message", () => {
-  const { code, stdout } = run(["clusters", "/tmp/visual-reviewer-does-not-exist-xyz"]);
+  const target = missingPath();
+  const { code, stdout } = run(["clusters", target]);
   assert.equal(code, 1);
   assert.match(stdout, /No output dir at/);
+  assert.ok(stdout.includes(target), `message should name ${target}`);
 });
 
 test("cli: feedback without --accept/--reject exits 5", () => {
-  const { code, stdout } = run(["feedback", "/tmp"]);
+  const { code, stdout } = run(["feedback", tmpDir()]);
   assert.equal(code, 5);
   assert.match(stdout, /requires --accept or --reject/);
 });
 
 test("cli: clusters honours --output-dir, which the divergent parsers dropped", () => {
-  const { code, stdout } = run(["clusters", "--output-dir", "/tmp/vr-no-such-dir-abc"]);
+  const target = missingPath();
+  const { code, stdout } = run(["clusters", "--output-dir", target]);
   assert.equal(code, 1);
-  assert.match(stdout, /\/tmp\/vr-no-such-dir-abc/);
+  assert.ok(stdout.includes(target), `message should name ${target}`);
 });
 
 test("cli: clusters honours the output-dir environment variable too", () => {
+  const target = missingPath();
   const { code, stdout } = run(["clusters"], {
-    VISUAL_REVIEWER_OUTPUT_DIR: "/tmp/vr-env-dir-abc",
+    VISUAL_REVIEWER_OUTPUT_DIR: target,
   });
   assert.equal(code, 1);
-  assert.match(stdout, /\/tmp\/vr-env-dir-abc/);
+  assert.ok(stdout.includes(target), `message should name ${target}`);
 });
 
 test("cli: judge reports no bundles under an empty output dir instead of judging nothing", () => {
-  const { code, stdout } = run(["judge", "/tmp/vr-empty-dir-abc"]);
+  // tmpDir() exists and is empty, so the CLI must reach findBundles and report
+  // "no bundles" rather than "no output dir".
+  const { code, stdout } = run(["judge", tmpDir()]);
   assert.equal(code, 1);
   assert.match(stdout, /No evidence bundles found/);
 });
@@ -129,6 +168,26 @@ test("cli: bench prefers the positional dir over --seed in either order", () => 
   assert.equal(before.dir, "POS");
   assert.equal(before.extra["--seed"], "SEED");
 });
+
+test("cli: a boolean extra flag does not consume the positional directory", () => {
+  // feedbackMain declares --accept/--reject as boolean (`false` = takes no
+  // value) and --note/--verdict as value-taking (`true`). A boolean flag must
+  // leave the next token for the positional dir.
+  const extras = { "--accept": false, "--reject": false, "--note": true, "--verdict": true };
+
+  const flagFirst = parseArgs(["--accept", "/tmp/x"], extras);
+  assert.equal(flagFirst.dir, "/tmp/x");
+  assert.equal(flagFirst.extra["--accept"], "true");
+
+  const dirFirst = parseArgs(["/tmp/x", "--accept"], extras);
+  assert.equal(dirFirst.dir, "/tmp/x");
+  assert.equal(dirFirst.extra["--accept"], "true");
+
+  const valued = parseArgs(["--note", "hello", "/tmp/x"], extras);
+  assert.equal(valued.dir, "/tmp/x");
+  assert.equal(valued.extra["--note"], "hello");
+});
+
 test("cli: a bare value-taking flag leaves the option unset so the default survives", () => {
   // resolveOracleConfig uses `??`, so "" would beat the default model id and
   // the provider would be asked for a model named "". Leaving it unset keeps
