@@ -7,7 +7,7 @@
  *   visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."]
  *   visual-reviewer clusters [.visual-reviewer]
  *
- * Every subcommand shares one flag table (`COMMON_FLAGS` below); only
+ * Every subcommand shares one flag table (`COMMON_FLAGS` in args.ts); only
  * `bench` and `feedback` declare extras of their own.
  */
 import path from "node:path";
@@ -17,90 +17,7 @@ import { resolveOracleConfig, resolveOutputDir, type VisualReviewerOptions } fro
 import { runJudgedBundles } from "./oracle/run.js";
 import { VerdictSchema, type Verdict } from "./oracle/schema.js";
 import { renderRunSummary } from "./report/markdown.js";
-
-/**
- * One argument parser for every subcommand.
- *
- * `judge`, `bench` and `feedback` each had their own inline loop, and the
- * flag coverage had drifted: `--output-dir`, `--max-screenshots` and
- * `--no-baselines` worked for `judge` and were silently ignored (not
- * rejected) everywhere else. The shared table below is the single place a
- * flag is declared; a subcommand that does not want one simply ignores it,
- * which is the same forgiving behaviour, minus the four copies.
- *
- * Note `--no-judge` is deliberately still routed to `help`, not to
- * `options.judge`. That is what it has always done, and changing it is a
- * behaviour change, not a refactor. See the linked issue.
- */
-const COMMON_FLAGS: Readonly<Record<string, (opt: VisualReviewerOptions, value: string) => void>> = {
-  "--model": (o, v) => {
-    o.model = v;
-  },
-  "--base-url": (o, v) => {
-    o.baseURL = v;
-  },
-  "--api-key-env": (o, v) => {
-    o.apiKeyEnvVar = v;
-  },
-  "--output-dir": (o, v) => {
-    o.outputDir = v;
-  },
-  "--max-screenshots": (o, v) => {
-    o.maxScreenshots = Number(v);
-  },
-  "--no-baselines": (o) => {
-    o.baselines = false;
-  },
-  "--temperature": (o, v) => {
-    o.temperature = Number(v);
-  },
-  "--timeout-ms": (o, v) => {
-    o.timeoutMs = Number(v);
-  },
-  "--no-follow-ups": (o) => {
-    o.followUps = false;
-  },
-};
-
-interface ParsedArgs {
-  dir: string;
-  options: VisualReviewerOptions;
-  help: boolean;
-  /** Subcommand-specific flags, keyed by flag name. */
-  extra: Record<string, string>;
-}
-
-/**
- * @param extras subcommand-only flags, mapped to whether they take a value.
- */
-function parseArgs(
-  argv: string[],
-  extras: Readonly<Record<string, boolean>> = {},
-): ParsedArgs {
-  const options: VisualReviewerOptions = {};
-  const extra: Record<string, string> = {};
-  let dir = "";
-  let help = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--no-judge" || arg === "-h" || arg === "--help") {
-      help = true;
-      continue;
-    }
-    const value = () => argv[++i] ?? "";
-    const apply = COMMON_FLAGS[arg];
-    if (apply) {
-      apply(options, value());
-      continue;
-    }
-    if (Object.prototype.hasOwnProperty.call(extras, arg)) {
-      extra[arg] = extras[arg] ? value() : "true";
-      continue;
-    }
-    if (!arg.startsWith("-")) dir = arg;
-  }
-  return { dir, options, help, extra };
-}
+import { parseArgs } from "./args.js";
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
