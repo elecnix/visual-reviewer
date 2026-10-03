@@ -3,37 +3,21 @@
  * visual-reviewer CLI — judge saved evidence bundles, record feedback.
  *
  *   visual-reviewer judge [.visual-reviewer] [--model id] [--base-url url]
+ *   visual-reviewer bench <scenariosDir> [--model id] [--seed dir]
  *   visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."]
  *   visual-reviewer clusters [.visual-reviewer]
+ *
+ * Every subcommand shares one flag table (`COMMON_FLAGS` in args.ts); only
+ * `bench` and `feedback` declare extras of their own.
  */
 import path from "node:path";
 import fs from "node:fs";
 import { findBundles } from "./evidence/store.js";
 import { resolveOracleConfig, resolveOutputDir, type VisualReviewerOptions } from "./config.js";
-import { judgeBundles } from "./oracle/judge.js";
+import { runJudgedBundles } from "./oracle/run.js";
+import { VerdictSchema, type Verdict } from "./oracle/schema.js";
 import { renderRunSummary } from "./report/markdown.js";
-
-function parseArgs(argv: string[]): {
-  dir: string;
-  options: VisualReviewerOptions;
-  help: boolean;
-} {
-  const options: VisualReviewerOptions = {};
-  let dir = "";
-  let help = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--model") options.model = argv[++i];
-    else if (arg === "--base-url") options.baseURL = argv[++i];
-    else if (arg === "--api-key-env") options.apiKeyEnvVar = argv[++i];
-    else if (arg === "--output-dir") options.outputDir = argv[++i];
-    else if (arg === "--max-screenshots") options.maxScreenshots = Number(argv[++i]);
-    else if (arg === "--no-baselines") options.baselines = false;
-    else if (arg === "--no-judge" || arg === "-h" || arg === "--help") help = true;
-    else if (!arg.startsWith("-")) dir = arg;
-  }
-  return { dir, options, help };
-}
+import { parseArgs } from "./args.js";
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
@@ -43,25 +27,66 @@ async function main(): Promise<void> {
   return judgeMain([command, ...rest]);
 }
 
+const BENCH_HELP = `visual-reviewer bench <scenariosDir> [options]
+
+Runs every scenario folder (bundle.json + expected.json) through the oracle and
+reports detection rate, false positives/negatives and latency.
+
+Options: the common options (--model, --base-url, --api-key-env, --output-dir,
+--max-screenshots, --temperature, --timeout-ms, --no-baselines, --no-follow-ups)
+plus --seed <dir> to seed starter scenarios into <dir>.
+`;
+
+const CLUSTERS_HELP = `Group regression verdicts by likely root cause (offline, no API key).
+
+Usage:
+  visual-reviewer clusters [dir] [--output-dir <dir>]
+
+Reads bundle.json + verdict.json pairs under dir (default: ./.visual-reviewer)
+and prints shared failure signatures across material verdicts.
+`;
+
+const FEEDBACK_HELP = `Record human feedback on an AI verdict (feeds future judgements).
+
+Usage:
+  visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."] [--verdict REGRESSION]
+
+<bundleDir> is a test's directory under the output dir (contains bundle.json).
+`;
+
+const JUDGE_HELP = `visual-reviewer — AI semantic test oracle (advisory)
+
+Usage:
+  visual-reviewer judge [dir] [options]
+
+Judges every bundle.json under dir (default: ./.visual-reviewer).
+
+Options:
+  --model <id>          Provider model id (default: qwen/qwen3-vl-30b-a3b-instruct)
+  --base-url <url>      OpenAI-compatible endpoint (default: https://openrouter.ai/api/v1)
+  --api-key-env <name>  Env var holding the API key (default: OPENROUTER_API_KEY)
+  --output-dir <dir>    Where bundles live / reports are written
+  --max-screenshots <n> Max images per judgement (default: 6)
+  --temperature <n>     Sampling temperature (default: 0)
+  --timeout-ms <n>      Per-request timeout in ms (default: 120000)
+  --no-baselines        Do not compare against previous runs
+  --no-follow-ups       Disable the bounded additional-evidence round
+`;
+
 /** visual-reviewer bench <scenariosDir> [--model id] [--base-url url] */
 async function benchMain(argv: string[]): Promise<void> {
-  let dir = "";
-  const options: VisualReviewerOptions = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--model") options.model = argv[++i];
-    else if (arg === "--base-url") options.baseURL = argv[++i];
-    else if (arg === "--api-key-env") options.apiKeyEnvVar = argv[++i];
-    else if (arg === "--seed") dir = argv[++i];
-    else if (!arg.startsWith("-")) dir = arg;
+  const { dir, options, help, extra } = parseArgs(argv, { "--seed": true });
+  if (help) {
+    console.log(BENCH_HELP);
+    process.exit(0);
   }
-  const { resolveOracleConfig } = await import("./config.js");
   const { runBenchmark, seedStarterScenarios } = await import("./oracle/bench.js");
 
-  let scenariosDir = dir;
+  let scenariosDir = dir || extra["--seed"] || "";
+  const outputDir = resolveOutputDir(options.outputDir);
   if (!scenariosDir || !fs.existsSync(path.join(scenariosDir))) {
     // No scenario dir given (or missing): seed starters into a fresh one.
-    scenariosDir = path.resolve(".visual-reviewer/bench");
+    scenariosDir = path.join(outputDir, "bench");
     if (!fs.existsSync(scenariosDir)) {
       seedStarterScenarios(scenariosDir);
       console.log(`Seeded starter scenarios into ${scenariosDir}`);
@@ -83,8 +108,9 @@ async function benchMain(argv: string[]): Promise<void> {
     );
   }
 
+  fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(
-    path.join(process.cwd(), ".visual-reviewer", "bench-report.json"),
+    path.join(outputDir, "bench-report.json"),
     JSON.stringify(report, null, 2),
   );
 }
@@ -96,27 +122,18 @@ async function benchMain(argv: string[]): Promise<void> {
  * (failing endpoints, console errors, crashes). Needs no API key.
  */
 async function clustersMain(argv: string[]): Promise<void> {
-  let dir = "";
-  for (const arg of argv) {
-    if (arg === "-h" || arg === "--help") {
-      console.log(`Group regression verdicts by likely root cause (offline, no API key).
-
-Usage:
-  visual-reviewer clusters [dir]
-
-Reads bundle.json + verdict.json pairs under dir (default: ./.visual-reviewer)
-and prints shared failure signatures across material verdicts.
-`);
-      process.exit(0);
-    } else if (!arg.startsWith("-")) dir = arg;
+  const { dir, options, help } = parseArgs(argv);
+  if (help) {
+    console.log(CLUSTERS_HELP);
+    process.exit(0);
   }
 
-  const rootDir = resolveOutputDir(dir || undefined);
+  const rootDir = resolveOutputDir(dir || options.outputDir);
   if (!fs.existsSync(rootDir)) {
     console.error(`No output dir at ${rootDir}. Run your Playwright suite with the visual-reviewer/reporter first.`);
     process.exit(1);
   }
-  const { readBundle, findBundles } = await import("./evidence/store.js");
+  const { readBundle } = await import("./evidence/store.js");
   const { clusterRegressions, renderClusterSummary } = await import("./oracle/cluster.js");
 
   const bundles = findBundles(rootDir);
@@ -125,17 +142,16 @@ and prints shared failure signatures across material verdicts.
     process.exit(1);
   }
 
-  type AnyBundle = ReturnType<typeof readBundle>;
-  const items: Array<{ bundle: AnyBundle; verdict?: { verdict: string; confidence: number } }> = [];
+  const items: Array<{ bundle: ReturnType<typeof readBundle>; verdict?: Verdict }> = [];
   let missingVerdicts = 0;
   for (const bundlePath of bundles) {
     const bundle = readBundle(bundlePath);
     const verdictPath = path.join(path.dirname(bundlePath), "verdict.json");
     try {
-      const verdict = JSON.parse(fs.readFileSync(verdictPath, "utf8")) as {
-        verdict: string;
-        confidence: number;
-      };
+      // Parsed through the schema rather than cast: a hand-edited or
+      // truncated verdict.json used to sail through as `{verdict, confidence}`
+      // and then be clustered as if it were a real judgement.
+      const verdict = VerdictSchema.parse(JSON.parse(fs.readFileSync(verdictPath, "utf8")));
       items.push({ bundle, verdict });
     } catch {
       missingVerdicts += 1;
@@ -144,7 +160,7 @@ and prints shared failure signatures across material verdicts.
 
   console.log(
     `Loaded ${items.length} judged bundle(s) under ${rootDir}` +
-      (missingVerdicts > 0 ? ` (${missingVerdicts} without verdict.json — skipped)` : ""),
+      (missingVerdicts > 0 ? ` (${missingVerdicts} without a readable verdict.json — skipped)` : ""),
   );
   const summary = renderClusterSummary(clusterRegressions(items));
   if (summary) console.log(summary);
@@ -153,32 +169,27 @@ and prints shared failure signatures across material verdicts.
 
 /** visual-reviewer feedback <bundleDir> --accept|--reject [--note "…"] [--verdict REGRESSION] */
 async function feedbackMain(argv: string[]): Promise<void> {
-  let dir = "";
   let accepted: boolean | undefined;
   let note: string | undefined;
   let verdict: string | undefined;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--accept") accepted = true;
-    else if (arg === "--reject") accepted = false;
-    else if (arg === "--note") note = argv[++i];
-    else if (arg === "--verdict") verdict = argv[++i];
-    else if (arg === "-h" || arg === "--help") {
-      console.log(`Record human feedback on an AI verdict (feeds future judgements).
-
-Usage:
-  visual-reviewer feedback <bundleDir> --accept|--reject [--note "..."] [--verdict REGRESSION]
-
-<bundleDir> is a test's directory under the output dir (contains bundle.json).
-`);
-      process.exit(0);
-    } else if (!arg.startsWith("-")) dir = arg;
+  const { dir, help, extra } = parseArgs(argv, {
+    "--accept": false,
+    "--reject": false,
+    "--note": true,
+    "--verdict": true,
+  });
+  if (extra["--accept"] !== undefined) accepted = true;
+  if (extra["--reject"] !== undefined) accepted = false;
+  if (extra["--note"] !== undefined) note = extra["--note"];
+  if (extra["--verdict"] !== undefined) verdict = extra["--verdict"];
+  if (help) {
+    console.log(FEEDBACK_HELP);
+    process.exit(0);
   }
   if (accepted === undefined) {
     console.error("feedback requires --accept or --reject");
     process.exit(5);
   }
-  const { resolveOracleConfig } = await import("./config.js");
   const { readBundle } = await import("./evidence/store.js");
   const { saveFeedbackRecord } = await import("./evidence/feedback.js");
   const config = resolveOracleConfig();
@@ -200,20 +211,7 @@ Usage:
 async function judgeMain(argv: string[]): Promise<void> {
   const { dir, options, help } = parseArgs(argv);
   if (help) {
-    console.log(`visual-reviewer — AI semantic test oracle (advisory)
-
-Usage:
-  visual-reviewer judge [dir] [options]
-
-Judges every bundle.json under dir (default: ./.visual-reviewer).
-
-Options:
-  --model <id>          Provider model id (default: qwen/qwen3-vl-30b-a3b-instruct)
-  --base-url <url>      OpenAI-compatible endpoint (default: https://openrouter.ai/api/v1)
-  --api-key-env <name>  Env var holding the API key (default: OPENROUTER_API_KEY)
-  --output-dir <dir>    Where bundles live / reports are written
-  --max-screenshots <n> Max images per judgement (default: 6)
-`);
+    console.log(JUDGE_HELP);
     process.exit(0);
   }
 
@@ -226,11 +224,14 @@ Options:
   console.log(`Found ${bundles.length} bundle(s) under ${rootDir}`);
 
   const config = resolveOracleConfig(options);
-  const results = await judgeBundles(bundles, config);
-  console.log(renderRunSummary(results));
+  // The run owns its own exit policy; the CLI does not re-derive it.
+  const run = await runJudgedBundles(bundles, { config });
+  console.log(renderRunSummary(run.results));
 
-  const hardErrors = results.filter((r) => r.error && !r.error.includes("unparseable"));
-  process.exit(hardErrors.length > 0 ? 2 : 0);
+  if (run.exitCode !== 0 && run.exitReason) {
+    console.error(`Run failed: ${run.exitReason.split("\n")[0]}`);
+  }
+  process.exit(run.exitCode);
 }
 
 main().catch((err) => {
