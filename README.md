@@ -19,10 +19,10 @@ Advisory-only by design: it never fails your CI on its own.
 npm install -D visual-reviewer
 ```
 
-Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek-v4.1-flash` on Ollama Cloud**, a multimodal model, authenticated with an `OLLAMA_API_KEY`. The default used to be OpenRouter: if you only have `OPENROUTER_API_KEY`, pass `--base-url https://openrouter.ai/api/v1 --api-key-env OPENROUTER_API_KEY --model deepseek/deepseek-v4.1-flash`, or set the same through the reporter options.
+Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek/deepseek-v4.1-flash` via OpenRouter**, a multimodal model that is inexpensive to run (see OpenRouter for current pricing). If your OpenRouter account restricts models with a guardrail, the model must be on its allow-list.
 
 ```bash
-export OLLAMA_API_KEY=...
+export OPENROUTER_API_KEY=sk-or-...
 ```
 
 ## Configure
@@ -38,8 +38,8 @@ export default defineConfig({
     ["visual-reviewer/reporter", {
       // all optional:
       outputDir: ".visual-reviewer",
-      model: "deepseek-v4.1-flash",   // any model the endpoint serves
-      baseURL: "https://ollama.com/v1",           // or OpenRouter, OpenAI, vLLM…
+      model: "deepseek/deepseek-v4.1-flash",   // any OpenRouter model id
+      baseURL: "https://openrouter.ai/api/v1",    // or Ollama, OpenAI, vLLM…
       maxScreenshots: 6,                          // cost knob
       judge: true,                                // run oracle after the run
     }],
@@ -130,12 +130,15 @@ The oracle talks to any OpenAI-compatible endpoint through the [Vercel AI SDK](h
 
 | Provider | baseURL | model | key env |
 |---|---|---|---|
-| Ollama Cloud (default) | `https://ollama.com/v1` | `deepseek-v4.1-flash` | `OLLAMA_API_KEY` |
-| OpenRouter | `https://openrouter.ai/api/v1` | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` (`--api-key-env OPENROUTER_API_KEY`) |
+| OpenRouter (default) | `https://openrouter.ai/api/v1` | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` |
+| OpenRouter (stronger) | same | `qwen/qwen3-vl-235b-a22b-instruct` | `OPENROUTER_API_KEY` |
+| Ollama Cloud | `https://ollama.com/v1` | `deepseek-v4.1-flash` | `OLLAMA_API_KEY` (`--api-key-env OLLAMA_API_KEY`) |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` | `OPENAI_API_KEY` (`--api-key-env OPENAI_API_KEY`) |
 | Ollama (local) | `http://localhost:11434/v1` | `qwen3-vl:30b` | none needed |
 
-Env-var equivalents: `VISUAL_REVIEWER_MODEL`, `VISUAL_REVIEWER_BASE_URL`, `VISUAL_REVIEWER_OUTPUT_DIR`.
+Env-var equivalents: `VISUAL_REVIEWER_MODEL`, `VISUAL_REVIEWER_BASE_URL`, `VISUAL_REVIEWER_API_KEY_ENV` (the name of the variable holding the key), `VISUAL_REVIEWER_OUTPUT_DIR`.
+
+To judge with **Ollama Cloud** instead of OpenRouter, set `VISUAL_REVIEWER_BASE_URL=https://ollama.com/v1`, `VISUAL_REVIEWER_MODEL=deepseek-v4.1-flash` and `VISUAL_REVIEWER_API_KEY_ENV=OLLAMA_API_KEY`, then export `OLLAMA_API_KEY`. Ollama Cloud names models without the provider prefix.
 
 ## CLI: judge after the fact
 
@@ -143,7 +146,7 @@ Bundles are persisted even if you set `judge: false`, so you can judge later / s
 
 ```bash
 npx playwright test --reporter=list   # capture only
-npx visual-reviewer judge --model gemma4:31b
+npx visual-reviewer judge --model qwen/qwen3-vl-235b-a22b-instruct
 ```
 
 ## CI (advisory)

@@ -3,7 +3,7 @@
 The Visual Reviewer acceptance test, runnable in one command:
 
 ```bash
-OLLAMA_API_KEY=... npx playwright test --config examples/seeded-bug/playwright.config.ts
+OPENROUTER_API_KEY=sk-or-... npx playwright test --config examples/seeded-bug/playwright.config.ts
 ```
 
 (Requires `npm install && npx tsc` at the repo root first, and `npx playwright install chromium` once.)
@@ -25,7 +25,7 @@ Expected output:
 The full evidence report lands at
 `examples/seeded-bug/.visual-reviewer/**/report.md`.
 
-Without `OLLAMA_API_KEY` the run still captures evidence bundles
+Without `OPENROUTER_API_KEY` the run still captures evidence bundles
 (`judge: false`), which you can judge later with
 `npx visual-reviewer judge examples/seeded-bug/.visual-reviewer`.
 
