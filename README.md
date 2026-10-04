@@ -136,7 +136,7 @@ The oracle talks to any OpenAI-compatible endpoint through the [Vercel AI SDK](h
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` | `OPENAI_API_KEY` (`--api-key-env OPENAI_API_KEY`) |
 | Ollama (local) | `http://localhost:11434/v1` | `qwen3-vl:30b` | none needed |
 
-Env-var equivalents: `VISUAL_REVIEWER_MODEL`, `VISUAL_REVIEWER_BASE_URL`, `VISUAL_REVIEWER_API_KEY_ENV` (the name of the variable holding the key), `VISUAL_REVIEWER_OUTPUT_DIR`.
+Env-var equivalents: `VISUAL_REVIEWER_MODEL`, `VISUAL_REVIEWER_BASE_URL`, `VISUAL_REVIEWER_API_KEY_ENV` (the name of the variable holding the key), `VISUAL_REVIEWER_OUTPUT_DIR`. An empty value counts as unset, so the default applies; to turn the judge off, use `judge: false` or leave the key variable unexported.
 
 To judge with **Ollama Cloud** instead of OpenRouter, set `VISUAL_REVIEWER_BASE_URL=https://ollama.com/v1`, `VISUAL_REVIEWER_MODEL=deepseek-v4.1-flash` and `VISUAL_REVIEWER_API_KEY_ENV=OLLAMA_API_KEY`, then export `OLLAMA_API_KEY`. Ollama Cloud names models without the provider prefix.
 
