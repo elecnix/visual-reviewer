@@ -222,3 +222,20 @@ test("cli: --accept and --reject together are refused as contradictory", () => {
   assert.equal(reversed.code, 5);
   assert.match(reversed.stdout, /mutually exclusive/);
 });
+
+test("cli: a numeric flag given a non-numeric value is left unset, never NaN", () => {
+  // NaN is worse than unset: it compares false against every bound, so a NaN
+  // screenshot cap silently passes every downstream length check.
+  const bad = parseArgs(["--max-screenshots", "abc", "--temperature", "NaN", "--timeout-ms", "1e"]);
+  assert.equal(bad.options.maxScreenshots, undefined);
+  assert.equal(bad.options.temperature, undefined);
+  assert.equal(bad.options.timeoutMs, undefined);
+
+  const good = parseArgs(["--max-screenshots", "3", "--temperature", "-0.5"]);
+  assert.equal(good.options.maxScreenshots, 3);
+  assert.equal(good.options.temperature, -0.5);
+
+  // Non-numeric flags are unaffected.
+  const model = parseArgs(["--model", "abc"]);
+  assert.equal(model.options.model, "abc");
+});

@@ -114,7 +114,12 @@ export function parseArgs(
       // A flag with no value leaves the option unset rather than setting "",
       // so resolveOracleConfig still falls back to its default.
       const v = value();
-      if (v !== undefined) apply(options, v);
+      if (v === undefined) continue;
+      // A numeric flag given a non-numeric value must not become NaN. NaN is
+      // worse than unset: it compares false against every bound, so a NaN
+      // screenshot cap silently passes every length check downstream.
+      if (NUMERIC_FLAGS.has(arg) && !Number.isFinite(Number(v))) continue;
+      apply(options, v);
       continue;
     }
     if (Object.prototype.hasOwnProperty.call(extras, arg)) {
