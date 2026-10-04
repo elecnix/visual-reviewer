@@ -19,9 +19,11 @@ export default defineConfig({
       path.join(dist, "playwright/reporter.js"),
       {
         outputDir: path.join(here, ".visual-reviewer"),
-        model: process.env.VISUAL_REVIEWER_MODEL ?? "qwen/qwen3-vl-30b-a3b-instruct",
-        // Judge only when a key is available — capture-only otherwise.
-        judge: Boolean(process.env.OPENROUTER_API_KEY),
+        model: process.env.VISUAL_REVIEWER_MODEL ?? "deepseek/deepseek-v4.1-flash",
+        // Judge only when the configured provider's key is available —
+        // capture-only otherwise. The key variable follows
+        // VISUAL_REVIEWER_API_KEY_ENV, like the reporter's own configuration.
+        judge: Boolean(process.env[process.env.VISUAL_REVIEWER_API_KEY_ENV || "OPENROUTER_API_KEY"]),
       },
     ],
   ],

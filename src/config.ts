@@ -6,7 +6,10 @@ export interface OracleConfig {
   baseURL: string;
   /** Environment variable holding the API key. */
   apiKeyEnvVar: string;
-  /** Provider/model id, e.g. "qwen/qwen3-vl-30b-a3b-instruct". */
+  /**
+   * Model id as the endpoint names it: "deepseek/deepseek-v4.1-flash" on
+   * OpenRouter, "deepseek-v4.1-flash" on Ollama Cloud.
+   */
   model: string;
   /** Max screenshots sent per judgement (cost control). */
   maxScreenshots: number;
@@ -28,8 +31,9 @@ export interface OracleConfig {
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
   baseURL: "https://openrouter.ai/api/v1",
   apiKeyEnvVar: "OPENROUTER_API_KEY",
-  // Cheap Qwen3-VL via OpenRouter (~$0.13/$0.52 per M tokens) — see README.
-  model: "qwen/qwen3-vl-30b-a3b-instruct",
+  // DeepSeek V4.1 Flash via OpenRouter: accepts text and images, and is on the
+  // account's guardrail allow-list (a model outside it is refused with a 404).
+  model: "deepseek/deepseek-v4.1-flash",
   maxScreenshots: 6,
   temperature: 0,
   timeoutMs: 120_000,
@@ -51,17 +55,24 @@ export interface VisualReviewerOptions extends Partial<OracleConfig> {
   throwOnError?: boolean;
 }
 
+/** An environment override, where an empty value means unset. */
+function envOverride(name: string): string | undefined {
+  return process.env[name] || undefined;
+}
+
 export function resolveOracleConfig(
   options: VisualReviewerOptions = {},
 ): OracleConfig {
   return {
     baseURL:
       options.baseURL ??
-      process.env.VISUAL_REVIEWER_BASE_URL ??
+      envOverride("VISUAL_REVIEWER_BASE_URL") ??
       DEFAULT_ORACLE_CONFIG.baseURL,
     apiKeyEnvVar:
-      options.apiKeyEnvVar ?? DEFAULT_ORACLE_CONFIG.apiKeyEnvVar,
-    model: options.model ?? process.env.VISUAL_REVIEWER_MODEL ?? DEFAULT_ORACLE_CONFIG.model,
+      options.apiKeyEnvVar ??
+      envOverride("VISUAL_REVIEWER_API_KEY_ENV") ??
+      DEFAULT_ORACLE_CONFIG.apiKeyEnvVar,
+    model: options.model ?? envOverride("VISUAL_REVIEWER_MODEL") ?? DEFAULT_ORACLE_CONFIG.model,
     maxScreenshots: options.maxScreenshots ?? DEFAULT_ORACLE_CONFIG.maxScreenshots,
     temperature: options.temperature ?? DEFAULT_ORACLE_CONFIG.temperature,
     timeoutMs: options.timeoutMs ?? DEFAULT_ORACLE_CONFIG.timeoutMs,
