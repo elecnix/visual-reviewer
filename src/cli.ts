@@ -186,6 +186,14 @@ async function feedbackMain(argv: string[]): Promise<void> {
     console.log(FEEDBACK_HELP);
     process.exit(0);
   }
+  if (extra["--accept"] !== undefined && extra["--reject"] !== undefined) {
+    // Contradictory input. On main the loop was last-one-wins, so the outcome
+    // depended on argv order; with the extras table the --reject check runs
+    // last and would always win. Either way one of the two flags was silently
+    // discarded — refuse instead.
+    console.error("feedback: --accept and --reject are mutually exclusive");
+    process.exit(5);
+  }
   if (accepted === undefined) {
     console.error("feedback requires --accept or --reject");
     process.exit(5);

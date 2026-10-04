@@ -91,12 +91,16 @@ test("exit policy: an unparseable reply exits 0, because it is recorded as such"
 });
 
 test("exit policy: the policy reads the outcome, not the wording of the message", () => {
-  // The regression this test exists for: `cli.ts` used to ask whether the
-  // error string contained "unparseable". Rewording the message below would
-  // have flipped the exit code to 0 under the old implementation.
-  const reworded = [{ bundlePath: "b", error: "the provider refused the request", outcome: "error" }];
-  assert.equal(exitCodeFor(reworded), 2);
-  assert.equal(exitCodeFor([{ ...reworded[0], error: "unparseable" }]), 2);
+  // Both cases carry the SAME outcome and differ only in wording. Under the
+  // old substring implementation (`r.error.includes("unparseable")`) the
+  // second case was filtered out and the run exited 0, so THIS is the
+  // assertion that fails on a revert — the first one alone passes under both.
+  const base = { bundlePath: "b", outcome: "error" };
+  const reworded = exitCodeFor([{ ...base, error: "the provider refused the request" }]);
+  const contains = exitCodeFor([{ ...base, error: "unparseable" }]);
+  assert.equal(reworded, 2);
+  assert.equal(contains, 2, "an 'unparseable' error with outcome 'error' is still a hard failure");
+  assert.equal(reworded, contains, "wording must not move the exit code");
 });
 
 test("exit policy: an error with no recorded outcome counts as a hard failure", () => {

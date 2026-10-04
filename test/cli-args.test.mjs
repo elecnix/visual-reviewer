@@ -208,3 +208,17 @@ test("cli: a bare value-taking flag leaves the option unset so the default survi
   assert.equal(options.model, undefined);
   assert.equal(resolveOracleConfig(options).model, resolveOracleConfig({}).model);
 });
+
+test("cli: --accept and --reject together are refused as contradictory", () => {
+  // On main the loop was last-one-wins, so `--accept --reject` recorded a
+  // rejection and `--reject --accept` recorded an acceptance. With the extras
+  // table the --reject check runs last, so it would always win. Neither is
+  // right: refuse the contradiction instead of silently dropping a flag.
+  const both = run(["feedback", tmpDir(), "--accept", "--reject"]);
+  assert.equal(both.code, 5);
+  assert.match(both.stdout, /mutually exclusive/);
+
+  const reversed = run(["feedback", tmpDir(), "--reject", "--accept"]);
+  assert.equal(reversed.code, 5);
+  assert.match(reversed.stdout, /mutually exclusive/);
+});
