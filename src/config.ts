@@ -55,19 +55,24 @@ export interface VisualReviewerOptions extends Partial<OracleConfig> {
   throwOnError?: boolean;
 }
 
+/** An environment override, where an empty value means unset. */
+function envOverride(name: string): string | undefined {
+  return process.env[name] || undefined;
+}
+
 export function resolveOracleConfig(
   options: VisualReviewerOptions = {},
 ): OracleConfig {
   return {
     baseURL:
       options.baseURL ??
-      process.env.VISUAL_REVIEWER_BASE_URL ??
+      envOverride("VISUAL_REVIEWER_BASE_URL") ??
       DEFAULT_ORACLE_CONFIG.baseURL,
     apiKeyEnvVar:
       options.apiKeyEnvVar ??
-      process.env.VISUAL_REVIEWER_API_KEY_ENV ??
+      envOverride("VISUAL_REVIEWER_API_KEY_ENV") ??
       DEFAULT_ORACLE_CONFIG.apiKeyEnvVar,
-    model: options.model ?? process.env.VISUAL_REVIEWER_MODEL ?? DEFAULT_ORACLE_CONFIG.model,
+    model: options.model ?? envOverride("VISUAL_REVIEWER_MODEL") ?? DEFAULT_ORACLE_CONFIG.model,
     maxScreenshots: options.maxScreenshots ?? DEFAULT_ORACLE_CONFIG.maxScreenshots,
     temperature: options.temperature ?? DEFAULT_ORACLE_CONFIG.temperature,
     timeoutMs: options.timeoutMs ?? DEFAULT_ORACLE_CONFIG.timeoutMs,

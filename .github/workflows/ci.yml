@@ -25,13 +25,6 @@ jobs:
     # Skips gracefully if the key isn't configured.
     runs-on: ubuntu-latest
     needs: build
-    env:
-      # Ollama Cloud, selected through the VISUAL_REVIEWER_* overrides; the
-      # default judge (OpenRouter) is unchanged for users.
-      VISUAL_REVIEWER_BASE_URL: https://ollama.com/v1
-      VISUAL_REVIEWER_MODEL: deepseek-v4.1-flash
-      VISUAL_REVIEWER_API_KEY_ENV: OLLAMA_API_KEY
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -40,4 +33,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc
-      - run: node scripts/oracle-smoke.mjs
+      - name: Judge one synthetic bundle with Ollama Cloud
+        # The secret is scoped to this step, so npm ci and tsc cannot read it.
+        # Ollama Cloud is selected through the VISUAL_REVIEWER_* overrides; the
+        # default judge (OpenRouter) is unchanged for users.
+        env:
+          VISUAL_REVIEWER_BASE_URL: https://ollama.com/v1
+          VISUAL_REVIEWER_MODEL: deepseek-v4.1-flash
+          VISUAL_REVIEWER_API_KEY_ENV: OLLAMA_API_KEY
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+        run: node scripts/oracle-smoke.mjs
