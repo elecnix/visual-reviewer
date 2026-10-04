@@ -2,16 +2,17 @@
  * Oracle smoke test: builds one synthetic EvidenceBundle (a green test with a
  * suspicious application-level failure) and runs it through the real judge.
  * Verifies: provider connectivity, multimodal request shape, JSON verdict
- * parsing. Skips (exit 0) when OPENROUTER_API_KEY is absent.
+ * parsing. Skips (exit 0) when the configured provider's key is absent.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { judgeBundle } from "../dist/oracle/judge.js";
-import { DEFAULT_ORACLE_CONFIG } from "../dist/config.js";
+import { resolveApiKey, resolveOracleConfig } from "../dist/config.js";
 
-if (!process.env.OPENROUTER_API_KEY) {
-  console.log("oracle-smoke: OPENROUTER_API_KEY not set — skipping (advisory job)");
+const baseConfig = resolveOracleConfig();
+if (!resolveApiKey(baseConfig)) {
+  console.log(`oracle-smoke: ${baseConfig.apiKeyEnvVar} not set — skipping (advisory job)`);
   process.exit(0);
 }
 
@@ -60,7 +61,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vr-smoke-"));
 const bundlePath = path.join(tmp, "bundle.json");
 fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
 
-const config = { ...DEFAULT_ORACLE_CONFIG, maxScreenshots: 0, timeoutMs: 90_000 };
+const config = { ...baseConfig, maxScreenshots: 0, timeoutMs: 90_000 };
 const result = await judgeBundle(bundlePath, config);
 
 if (result.error) {
