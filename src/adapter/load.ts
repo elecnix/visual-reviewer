@@ -62,8 +62,15 @@ export function loadAdapterArtifacts(dir: string): AdapterArtifacts {
  *
  * The writer emits the array form written by `writeAdapterArtifacts`; the
  * object form documented in earlier revisions of the contract is accepted too
- * so a hand-written or third-party index is not silently lost. Anything else
- * fails loudly instead of yielding an empty index.
+ * so a hand-written or third-party index is not silently lost. A malformed
+ * *value* fails loudly — an array entry that is not `{name, path}`, or an
+ * object key that does not map to a string.
+ *
+ * An empty index is legal in either form and means "no named artifacts", not
+ * "malformed": `[]` is what the writer emits for a run with none, and `{}` is
+ * the same state in object form. Distinguishing a legitimately empty index from
+ * a truncated one is not possible from the file alone, and failing on `{}`
+ * would break adapters that genuinely have nothing to index.
  */
 function readArtifactIndex(file: string): [string, string][] {
   const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
