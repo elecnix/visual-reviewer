@@ -6,7 +6,7 @@ export interface OracleConfig {
   baseURL: string;
   /** Environment variable holding the API key. */
   apiKeyEnvVar: string;
-  /** Provider/model id, e.g. "qwen/qwen3-vl-30b-a3b-instruct". */
+  /** Provider/model id, e.g. "deepseek/deepseek-v4.1-flash". */
   model: string;
   /** Max screenshots sent per judgement (cost control). */
   maxScreenshots: number;
@@ -28,8 +28,9 @@ export interface OracleConfig {
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
   baseURL: "https://openrouter.ai/api/v1",
   apiKeyEnvVar: "OPENROUTER_API_KEY",
-  // Cheap Qwen3-VL via OpenRouter (~$0.13/$0.52 per M tokens) — see README.
-  model: "qwen/qwen3-vl-30b-a3b-instruct",
+  // DeepSeek V4.1 Flash via OpenRouter: accepts text and images, and is on the
+  // account's guardrail allow-list (a model outside it is refused with a 404).
+  model: "deepseek/deepseek-v4.1-flash",
   maxScreenshots: 6,
   temperature: 0,
   timeoutMs: 120_000,

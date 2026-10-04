@@ -19,7 +19,7 @@ Advisory-only by design: it never fails your CI on its own.
 npm install -D visual-reviewer
 ```
 
-Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`qwen/qwen3-vl-30b-a3b-instruct` via OpenRouter** (~$0.13/$0.52 per M tokens — a full suite run typically costs a few cents).
+Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek/deepseek-v4.1-flash` via OpenRouter**, a multimodal model that is inexpensive to run (see OpenRouter for current pricing). If your OpenRouter account restricts models with a guardrail, the model must be on its allow-list.
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
@@ -38,7 +38,7 @@ export default defineConfig({
     ["visual-reviewer/reporter", {
       // all optional:
       outputDir: ".visual-reviewer",
-      model: "qwen/qwen3-vl-30b-a3b-instruct",   // any OpenRouter model id
+      model: "deepseek/deepseek-v4.1-flash",   // any OpenRouter model id
       baseURL: "https://openrouter.ai/api/v1",    // or Ollama, OpenAI, vLLM…
       maxScreenshots: 6,                          // cost knob
       judge: true,                                // run oracle after the run
@@ -130,7 +130,7 @@ The oracle talks to any OpenAI-compatible endpoint through the [Vercel AI SDK](h
 
 | Provider | baseURL | model | key env |
 |---|---|---|---|
-| OpenRouter (default) | `https://openrouter.ai/api/v1` | `qwen/qwen3-vl-30b-a3b-instruct` | `OPENROUTER_API_KEY` |
+| OpenRouter (default) | `https://openrouter.ai/api/v1` | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` |
 | OpenRouter (stronger) | same | `qwen/qwen3-vl-235b-a22b-instruct` | `OPENROUTER_API_KEY` |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` | `OPENAI_API_KEY` (`--api-key-env OPENAI_API_KEY`) |
 | Ollama (local) | `http://localhost:11434/v1` | `qwen3-vl:30b` | none needed |
