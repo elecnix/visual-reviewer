@@ -118,7 +118,16 @@ export function parseArgs(
       continue;
     }
     if (Object.prototype.hasOwnProperty.call(extras, arg)) {
-      extra[arg] = extras[arg] ? (value() ?? "") : "true";
+      if (!extras[arg]) {
+        // Boolean flag: present is the whole signal, it takes no value.
+        extra[arg] = "true";
+        continue;
+      }
+      // Value-taking extra. A missing value leaves the entry UNSET, matching
+      // COMMON_FLAGS above — setting "" would make `extra["--x"] !== undefined`
+      // true for a flag the user did not actually give.
+      const v = value();
+      if (v !== undefined) extra[arg] = v;
       continue;
     }
     if (!arg.startsWith("-")) dir = arg;
