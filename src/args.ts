@@ -56,6 +56,13 @@ const NEGATIVE_NUMBER = /^-(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 
 export interface ParsedArgs {
   dir: string;
+  /**
+   * A present-but-malformed argument, recorded rather than thrown so that
+   * `--help` still wins over a bad flag elsewhere on the line. Callers check
+   * this after their help block and exit. Absence of a value is NOT an error —
+   * that falls back to the default — but a value that is present and wrong is.
+   */
+  error?: string;
   options: VisualReviewerOptions;
   help: boolean;
   /** Subcommand-specific flags, keyed by flag name. */
@@ -83,6 +90,10 @@ export function parseArgs(
   const extra: Record<string, string> = {};
   let dir = "";
   let help = false;
+  let error: string | undefined;
+  const fail = (message: string): void => {
+    error ??= message;
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--no-judge" || arg === "-h" || arg === "--help") {
@@ -118,7 +129,13 @@ export function parseArgs(
       // A numeric flag given a non-numeric value must not become NaN. NaN is
       // worse than unset: it compares false against every bound, so a NaN
       // screenshot cap silently passes every length check downstream.
-      if (NUMERIC_FLAGS.has(arg) && !Number.isFinite(Number(v))) continue;
+      if (NUMERIC_FLAGS.has(arg) && !Number.isFinite(Number(v))) {
+        // Present but malformed. Silently dropping it would make the flag a
+        // no-op with the default quietly applied, which is worse than the NaN
+        // it replaced.
+        fail(`${arg} expects a number, got "${v}"`);
+        continue;
+      }
       apply(options, v);
       continue;
     }
@@ -135,7 +152,14 @@ export function parseArgs(
       if (v !== undefined) extra[arg] = v;
       continue;
     }
-    if (!arg.startsWith("-")) dir = arg;
+    if (!arg.startsWith("-")) {
+      if (dir !== "") {
+        // `judge ./a ./b` used to silently discard ./a.
+        fail(`unexpected argument "${arg}"; a directory was already given as "${dir}"`);
+        continue;
+      }
+      dir = arg;
+    }
   }
-  return { dir, options, help, extra };
+  return { dir, options, help, extra, ...(error !== undefined ? { error } : {}) };
 }

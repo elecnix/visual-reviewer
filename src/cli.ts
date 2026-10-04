@@ -20,11 +20,19 @@ import { renderRunSummary } from "./report/markdown.js";
 import { parseArgs } from "./args.js";
 
 async function main(): Promise<void> {
-  const [command, ...rest] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const [command, ...rest] = argv;
   if (command === "feedback") return feedbackMain(rest);
   if (command === "bench") return benchMain(rest);
   if (command === "clusters") return clustersMain(rest);
-  return judgeMain([command, ...rest]);
+  // Not a subcommand, so `judge` is the default and the whole argv is its
+  // input. This used to be `[command, ...rest]`, which put the subcommand word
+  // into `dir`: a bare `visual-reviewer` crashed on `undefined.startsWith`,
+  // and `visual-reviewer judge ./x` had "judge" as the directory before `./x`
+  // overwrote it. Last-positional-wins hid the second one.
+  // `judge` is the default subcommand, so an explicit `judge` word is a
+  // subcommand token and must be stripped like any other.
+  return judgeMain(command === "judge" ? rest : argv);
 }
 
 const BENCH_HELP = `visual-reviewer bench <scenariosDir> [options]
@@ -75,10 +83,14 @@ Options:
 
 /** visual-reviewer bench <scenariosDir> [--model id] [--base-url url] */
 async function benchMain(argv: string[]): Promise<void> {
-  const { dir, options, help, extra } = parseArgs(argv, { "--seed": true });
+  const { dir, options, help, extra, error } = parseArgs(argv, { "--seed": true });
   if (help) {
     console.log(BENCH_HELP);
     process.exit(0);
+  }
+  if (error) {
+    console.error(`visual-reviewer: ${error}`);
+    process.exit(5);
   }
   const { runBenchmark, seedStarterScenarios } = await import("./oracle/bench.js");
 
@@ -122,10 +134,14 @@ async function benchMain(argv: string[]): Promise<void> {
  * (failing endpoints, console errors, crashes). Needs no API key.
  */
 async function clustersMain(argv: string[]): Promise<void> {
-  const { dir, options, help } = parseArgs(argv);
+  const { dir, options, help, error } = parseArgs(argv);
   if (help) {
     console.log(CLUSTERS_HELP);
     process.exit(0);
+  }
+  if (error) {
+    console.error(`visual-reviewer: ${error}`);
+    process.exit(5);
   }
 
   const rootDir = resolveOutputDir(dir || options.outputDir);
@@ -172,7 +188,7 @@ async function feedbackMain(argv: string[]): Promise<void> {
   let accepted: boolean | undefined;
   let note: string | undefined;
   let verdict: string | undefined;
-  const { dir, help, extra } = parseArgs(argv, {
+  const { dir, help, extra, error } = parseArgs(argv, {
     "--accept": false,
     "--reject": false,
     "--note": true,
@@ -185,6 +201,10 @@ async function feedbackMain(argv: string[]): Promise<void> {
   if (help) {
     console.log(FEEDBACK_HELP);
     process.exit(0);
+  }
+  if (error) {
+    console.error(`visual-reviewer: ${error}`);
+    process.exit(5);
   }
   if (extra["--accept"] !== undefined && extra["--reject"] !== undefined) {
     // Contradictory input. On main the loop was last-one-wins, so the outcome
@@ -217,10 +237,14 @@ async function feedbackMain(argv: string[]): Promise<void> {
 }
 
 async function judgeMain(argv: string[]): Promise<void> {
-  const { dir, options, help } = parseArgs(argv);
+  const { dir, options, help, error } = parseArgs(argv);
   if (help) {
     console.log(JUDGE_HELP);
     process.exit(0);
+  }
+  if (error) {
+    console.error(`visual-reviewer: ${error}`);
+    process.exit(5);
   }
 
   const rootDir = resolveOutputDir(dir || options.outputDir);

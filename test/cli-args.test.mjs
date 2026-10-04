@@ -239,3 +239,48 @@ test("cli: a numeric flag given a non-numeric value is left unset, never NaN", (
   const model = parseArgs(["--model", "abc"]);
   assert.equal(model.options.model, "abc");
 });
+
+test("cli: a bare invocation reports a missing output dir instead of crashing", () => {
+  // main() used to call judgeMain([command, ...rest]) with command undefined,
+  // so `visual-reviewer` on its own threw TypeError: Cannot read properties
+  // of undefined (reading 'startsWith').
+  const { code, stdout } = run([]);
+  assert.notEqual(code, 0);
+  assert.doesNotMatch(stdout, /TypeError/);
+  assert.match(stdout, /No evidence bundles found/);
+});
+
+test("cli: an explicit `judge` word is a subcommand token, not the directory", () => {
+  // The same line put the subcommand word into `dir`; last-positional-wins
+  // hid it until a second positional started being rejected.
+  const dir = tmpDir();
+  const explicit = run(["judge", dir]);
+  assert.equal(explicit.code, 1);
+  assert.ok(explicit.stdout.includes(dir), `should judge ${dir}`);
+  assert.doesNotMatch(explicit.stdout, /already given as "judge"/);
+
+  const implied = run([dir]);
+  assert.equal(implied.code, 1);
+  assert.ok(implied.stdout.includes(dir), `should judge ${dir}`);
+});
+
+test("cli: a second positional is rejected, naming the first directory", () => {
+  const first = tmpDir();
+  const second = tmpDir();
+  const { code, stdout } = run(["judge", first, second]);
+  assert.equal(code, 5);
+  assert.match(stdout, new RegExp(`unexpected argument "${second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+  assert.ok(stdout.includes(first), `should name the directory already given (${first})`);
+});
+
+test("cli: a numeric flag with a non-numeric value is rejected, not ignored", () => {
+  const { code, stdout } = run(["judge", "--max-screenshots", "abc", tmpDir()]);
+  assert.equal(code, 5);
+  assert.match(stdout, /--max-screenshots expects a number, got "abc"/);
+});
+
+test("cli: --help still wins over a malformed flag elsewhere on the line", () => {
+  const { code, stdout } = run(["judge", "--max-screenshots", "abc", "--help"]);
+  assert.equal(code, 0);
+  assert.match(stdout, /visual-reviewer judge/);
+});
