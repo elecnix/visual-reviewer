@@ -150,10 +150,22 @@ test("cli: a value-taking flag does not swallow the next flag", () => {
   assert.equal(dir, "");
 });
 
-test("cli: a negative number is still consumed as a flag value", () => {
-  // The guard must not swallow a legitimate numeric value that starts with "-".
-  const { options } = parseArgs(["--max-screenshots", "-1"]);
-  assert.equal(options.maxScreenshots, -1);
+test("cli: a negative number is only a value for a numeric flag", () => {
+  // `--temperature -0.5` is legitimate; `--model -5` and `--output-dir -1` are
+  // typos. Shape alone cannot tell them apart, so numeric flags are named.
+  const numeric = parseArgs(["--max-screenshots", "-1", "--temperature", "-0.5"]);
+  assert.equal(numeric.options.maxScreenshots, -1);
+  assert.equal(numeric.options.temperature, -0.5);
+
+  const notNumeric = parseArgs(["--model", "-5"]);
+  assert.equal(notNumeric.options.model, undefined);
+
+  const dir = parseArgs(["--output-dir", "-1"]);
+  assert.equal(dir.options.outputDir, undefined);
+
+  // The old `^-\d` test also swallowed tokens that merely started with a digit.
+  const sloppy = parseArgs(["--temperature", "-5x"]);
+  assert.equal(sloppy.options.temperature, undefined);
 });
 
 test("cli: bench prefers the positional dir over --seed in either order", () => {

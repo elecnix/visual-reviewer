@@ -44,6 +44,16 @@ export const COMMON_FLAGS: Readonly<Record<string, (opt: VisualReviewerOptions, 
   },
 };
 
+/** Flags whose value is a number, so a negative one is legitimate. */
+const NUMERIC_FLAGS: ReadonlySet<string> = new Set([
+  "--max-screenshots",
+  "--temperature",
+  "--timeout-ms",
+]);
+
+/** A negative decimal, optionally in exponent form. */
+const NEGATIVE_NUMBER = /^-(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+
 export interface ParsedArgs {
   dir: string;
   options: VisualReviewerOptions;
@@ -83,11 +93,19 @@ export function parseArgs(
     // value. Before, `--model --output-dir out` set model to the literal
     // "--output-dir" and left "out" to be parsed as the positional dir; a bare
     // `--model` set model to "" which then beat the default in
-    // resolveOracleConfig, because "" is not nullish. A negative number is a value.
+    // resolveOracleConfig, because "" is not nullish.
+    //
+    // A leading "-" is normally another flag, so it is not a value. The
+    // exception is a genuine negative number, and only for a numeric flag:
+    // `--temperature -0.5` is legitimate, `--model -5` and `--output-dir -1`
+    // are typos. Shape alone cannot tell them apart, so the numeric flags are
+    // named rather than guessed.
     const value = (): string | undefined => {
       const next = argv[i + 1];
       if (next === undefined) return undefined;
-      if (next.startsWith("-") && !/^-\d/.test(next)) return undefined;
+      if (next.startsWith("-") && !(NUMERIC_FLAGS.has(arg) && NEGATIVE_NUMBER.test(next))) {
+        return undefined;
+      }
       i += 1;
       return next;
     };
