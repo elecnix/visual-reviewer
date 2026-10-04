@@ -6,7 +6,10 @@ export interface OracleConfig {
   baseURL: string;
   /** Environment variable holding the API key. */
   apiKeyEnvVar: string;
-  /** Provider/model id, e.g. "deepseek/deepseek-v4.1-flash". */
+  /**
+   * Model id as the endpoint names it: "deepseek-v4.1-flash" on Ollama Cloud,
+   * "deepseek/deepseek-v4.1-flash" on OpenRouter.
+   */
   model: string;
   /** Max screenshots sent per judgement (cost control). */
   maxScreenshots: number;
@@ -85,6 +88,22 @@ export function resolveApiKey(config: OracleConfig): string | undefined {
   const key = process.env[config.apiKeyEnvVar];
   if (!key && config.baseURL.includes("api.openai.com")) return undefined;
   return key;
+}
+
+/**
+ * A message for a missing key on the default endpoint, or undefined when the
+ * key is present or the endpoint needs none. The default moved from OpenRouter
+ * to Ollama Cloud, so a setup that only has OPENROUTER_API_KEY would otherwise
+ * send an unauthenticated request and see a bare 401.
+ */
+export function missingKeyHint(config: OracleConfig): string | undefined {
+  if (resolveApiKey(config)) return undefined;
+  if (!config.baseURL.includes("ollama.com")) return undefined;
+  return (
+    `${config.apiKeyEnvVar} is not set, and the default judge is Ollama Cloud (${config.baseURL}). ` +
+    `To keep using OpenRouter, pass --base-url https://openrouter.ai/api/v1 ` +
+    `--api-key-env OPENROUTER_API_KEY --model deepseek/deepseek-v4.1-flash.`
+  );
 }
 
 /** Where cached reports live relative to the output dir. */

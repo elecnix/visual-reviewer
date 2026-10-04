@@ -19,7 +19,7 @@ Advisory-only by design: it never fails your CI on its own.
 npm install -D visual-reviewer
 ```
 
-Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek-v4.1-flash` on Ollama Cloud**, a multimodal model, authenticated with an `OLLAMA_API_KEY`.
+Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek-v4.1-flash` on Ollama Cloud**, a multimodal model, authenticated with an `OLLAMA_API_KEY`. The default used to be OpenRouter: if you only have `OPENROUTER_API_KEY`, pass `--base-url https://openrouter.ai/api/v1 --api-key-env OPENROUTER_API_KEY --model deepseek/deepseek-v4.1-flash`, or set the same through the reporter options.
 
 ```bash
 export OLLAMA_API_KEY=...

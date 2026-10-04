@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import type { OracleConfig } from "../config.js";
-import { resolveApiKey, USER_AGENT } from "../config.js";
+import { missingKeyHint, resolveApiKey, USER_AGENT } from "../config.js";
 
 /**
  * Model-provider abstraction: any OpenAI-compatible endpoint works by
@@ -12,6 +12,8 @@ import { resolveApiKey, USER_AGENT } from "../config.js";
  *   Ollama:      http://localhost:11434/v1      qwen3-vl:30b
  */
 export function resolveModel(config: OracleConfig): LanguageModel {
+  const hint = missingKeyHint(config);
+  if (hint) throw new Error(hint);
   const provider = createOpenAICompatible({
     name: "visual-reviewer",
     baseURL: config.baseURL,
