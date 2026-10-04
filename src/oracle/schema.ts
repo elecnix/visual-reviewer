@@ -37,8 +37,12 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 /** The four verdict values, straight off the schema so the two cannot drift. */
 export type VerdictKind = Verdict["verdict"];
 
-export const VERDICT_KINDS: readonly VerdictKind[] =
-  VerdictSchema.shape.verdict.options;
+// A copy, not an alias. `readonly` is compile-time only, so assigning the
+// Zod enum's own options array would let any JS caller (or a cast) push onto
+// it and change what VerdictSchema.parse accepts for the rest of the process.
+export const VERDICT_KINDS: readonly VerdictKind[] = [
+  ...VerdictSchema.shape.verdict.options,
+];
 
 /**
  * Verdict semantics, defined exactly once.
