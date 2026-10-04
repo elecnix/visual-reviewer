@@ -5,9 +5,9 @@ import { resolveApiKey, USER_AGENT } from "../config.js";
 
 /**
  * Model-provider abstraction: any OpenAI-compatible endpoint works by
- * swapping `baseURL` + `model`. Defaults to OpenRouter + Qwen3-VL (cheap).
+ * swapping `baseURL` + `model`. Defaults to OpenRouter + DeepSeek V4.1 Flash.
  *
- *   OpenRouter:  https://openrouter.ai/api/v1   qwen/qwen3-vl-30b-a3b-instruct
+ *   OpenRouter:  https://openrouter.ai/api/v1   deepseek/deepseek-v4.1-flash
  *   OpenAI:      https://api.openai.com/v1      gpt-4o
  *   Ollama:      http://localhost:11434/v1      qwen3-vl:30b
  */

@@ -208,9 +208,9 @@ Usage:
 Judges every bundle.json under dir (default: ./.visual-reviewer).
 
 Options:
-  --model <id>          Provider model id (default: qwen/qwen3-vl-30b-a3b-instruct)
+  --model <id>          Provider model id (default: deepseek/deepseek-v4.1-flash)
   --base-url <url>      OpenAI-compatible endpoint (default: https://openrouter.ai/api/v1)
-  --api-key-env <name>  Env var holding the API key (default: OPENROUTER_API_KEY)
+  --api-key-env <name>  Env var holding the API key (default: OPENROUTER_API_KEY; env: VISUAL_REVIEWER_API_KEY_ENV)
   --output-dir <dir>    Where bundles live / reports are written
   --max-screenshots <n> Max images per judgement (default: 6)
 `);
