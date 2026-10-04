@@ -19,10 +19,10 @@ Advisory-only by design: it never fails your CI on its own.
 npm install -D visual-reviewer
 ```
 
-Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek/deepseek-v4.1-flash` via OpenRouter**, a multimodal model that is inexpensive to run (see OpenRouter for current pricing). If your OpenRouter account restricts models with a guardrail, the model must be on its allow-list.
+Requires Node ≥ 20 and an API key for any OpenAI-compatible provider. The default judge is **`deepseek-v4.1-flash` on Ollama Cloud**, a multimodal model, authenticated with an `OLLAMA_API_KEY`.
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-...
+export OLLAMA_API_KEY=...
 ```
 
 ## Configure
@@ -38,8 +38,8 @@ export default defineConfig({
     ["visual-reviewer/reporter", {
       // all optional:
       outputDir: ".visual-reviewer",
-      model: "deepseek/deepseek-v4.1-flash",   // any OpenRouter model id
-      baseURL: "https://openrouter.ai/api/v1",    // or Ollama, OpenAI, vLLM…
+      model: "deepseek-v4.1-flash",   // any model the endpoint serves
+      baseURL: "https://ollama.com/v1",           // or OpenRouter, OpenAI, vLLM…
       maxScreenshots: 6,                          // cost knob
       judge: true,                                // run oracle after the run
     }],
@@ -130,8 +130,8 @@ The oracle talks to any OpenAI-compatible endpoint through the [Vercel AI SDK](h
 
 | Provider | baseURL | model | key env |
 |---|---|---|---|
-| OpenRouter (default) | `https://openrouter.ai/api/v1` | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` |
-| OpenRouter (stronger) | same | `qwen/qwen3-vl-235b-a22b-instruct` | `OPENROUTER_API_KEY` |
+| Ollama Cloud (default) | `https://ollama.com/v1` | `deepseek-v4.1-flash` | `OLLAMA_API_KEY` |
+| OpenRouter | `https://openrouter.ai/api/v1` | `deepseek/deepseek-v4.1-flash` | `OPENROUTER_API_KEY` (`--api-key-env OPENROUTER_API_KEY`) |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o` | `OPENAI_API_KEY` (`--api-key-env OPENAI_API_KEY`) |
 | Ollama (local) | `http://localhost:11434/v1` | `qwen3-vl:30b` | none needed |
 
@@ -143,7 +143,7 @@ Bundles are persisted even if you set `judge: false`, so you can judge later / s
 
 ```bash
 npx playwright test --reporter=list   # capture only
-npx visual-reviewer judge --model qwen/qwen3-vl-235b-a22b-instruct
+npx visual-reviewer judge --model gemma4:31b
 ```
 
 ## CI (advisory)

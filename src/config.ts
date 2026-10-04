@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 
 export interface OracleConfig {
-  /** Any OpenAI-compatible endpoint. Defaults to OpenRouter. */
+  /** Any OpenAI-compatible endpoint. Defaults to Ollama Cloud. */
   baseURL: string;
   /** Environment variable holding the API key. */
   apiKeyEnvVar: string;
@@ -26,11 +26,10 @@ export interface OracleConfig {
 }
 
 export const DEFAULT_ORACLE_CONFIG: OracleConfig = {
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKeyEnvVar: "OPENROUTER_API_KEY",
-  // DeepSeek V4.1 Flash via OpenRouter: accepts text and images, and is on the
-  // account's guardrail allow-list (a model outside it is refused with a 404).
-  model: "deepseek/deepseek-v4.1-flash",
+  baseURL: "https://ollama.com/v1",
+  apiKeyEnvVar: "OLLAMA_API_KEY",
+  // DeepSeek V4.1 Flash on Ollama Cloud: accepts text and images.
+  model: "deepseek-v4.1-flash",
   maxScreenshots: 6,
   temperature: 0,
   timeoutMs: 120_000,

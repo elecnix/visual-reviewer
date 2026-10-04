@@ -5,9 +5,9 @@ import { resolveApiKey, USER_AGENT } from "../config.js";
 
 /**
  * Model-provider abstraction: any OpenAI-compatible endpoint works by
- * swapping `baseURL` + `model`. Defaults to OpenRouter + DeepSeek V4.1 Flash.
+ * swapping `baseURL` + `model`. Defaults to Ollama Cloud + DeepSeek V4.1 Flash.
  *
- *   OpenRouter:  https://openrouter.ai/api/v1   deepseek/deepseek-v4.1-flash
+ *   Ollama Cloud: https://ollama.com/v1          deepseek-v4.1-flash
  *   OpenAI:      https://api.openai.com/v1      gpt-4o
  *   Ollama:      http://localhost:11434/v1      qwen3-vl:30b
  */

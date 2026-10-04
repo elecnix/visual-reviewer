@@ -2,7 +2,7 @@
  * Oracle smoke test: builds one synthetic EvidenceBundle (a green test with a
  * suspicious application-level failure) and runs it through the real judge.
  * Verifies: provider connectivity, multimodal request shape, JSON verdict
- * parsing. Skips (exit 0) when OPENROUTER_API_KEY is absent.
+ * parsing. Skips (exit 0) when OLLAMA_API_KEY is absent.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -10,8 +10,8 @@ import path from "node:path";
 import { judgeBundle } from "../dist/oracle/judge.js";
 import { DEFAULT_ORACLE_CONFIG } from "../dist/config.js";
 
-if (!process.env.OPENROUTER_API_KEY) {
-  console.log("oracle-smoke: OPENROUTER_API_KEY not set — skipping (advisory job)");
+if (!process.env.OLLAMA_API_KEY) {
+  console.log("oracle-smoke: OLLAMA_API_KEY not set — skipping (advisory job)");
   process.exit(0);
 }
 
