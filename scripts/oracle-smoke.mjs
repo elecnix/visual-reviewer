@@ -2,7 +2,11 @@
  * Oracle smoke test: builds one synthetic EvidenceBundle (a green test with a
  * suspicious application-level failure) and runs it through the real judge.
  * Verifies: provider connectivity, multimodal request shape, JSON verdict
- * parsing. Skips (exit 0) when OPENROUTER_API_KEY is absent.
+ * parsing. Skips (exit 0) when OPENROUTER_API_KEY is absent, and also when the
+ * provider refuses the request because of an account policy (an OpenRouter
+ * guardrail or data policy excluding every endpoint): that is a property of the
+ * account, not of this code, and it must not turn every pull request red. Any
+ * other failure still fails the job.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -13,6 +17,13 @@ import { DEFAULT_ORACLE_CONFIG } from "../dist/config.js";
 if (!process.env.OPENROUTER_API_KEY) {
   console.log("oracle-smoke: OPENROUTER_API_KEY not set — skipping (advisory job)");
   process.exit(0);
+}
+
+// "0 endpoints out of N requested are available matching your guardrail
+// restrictions and data policy", returned with a 404. Match the policy wording,
+// not the status, so a genuinely missing model still fails.
+function isAccountPolicyRefusal(error) {
+  return /guardrail|data policy/i.test(String(error));
 }
 
 const bundle = {
@@ -61,9 +72,21 @@ const bundlePath = path.join(tmp, "bundle.json");
 fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
 
 const config = { ...DEFAULT_ORACLE_CONFIG, maxScreenshots: 0, timeoutMs: 90_000 };
-const result = await judgeBundle(bundlePath, config);
+let result;
+try {
+  result = await judgeBundle(bundlePath, config);
+} catch (err) {
+  // The provider SDK throws on a refused request instead of returning an error.
+  const detail = [err?.message, err?.responseBody, JSON.stringify(err?.data ?? {})].join(" ");
+  result = { error: detail };
+}
 
 if (result.error) {
+  if (isAccountPolicyRefusal(result.error)) {
+    // GitHub renders ::warning:: as an annotation, so the skip is visible on the run.
+    console.log(`::warning title=oracle-smoke skipped::provider refused the request under an account policy (guardrail or data policy); fix it in the OpenRouter workspace settings. ${String(result.error).slice(0, 200)}`);
+    process.exit(0);
+  }
   console.error("oracle-smoke: FAIL —", result.error);
   process.exit(1);
 }
