@@ -16,8 +16,12 @@ import type { Evidence, EvidenceBundle, EvidenceType } from "../evidence/model.j
  *     sourceCode        (or .json with { source }: the test spec text)
  *     assertions.json   [{ title, passed, error? }]
  *     evidence.json     [{ type, timestamp, content, asset?, metadata? }]
- *     artifacts.json    { name -> relative path }  (optional named artifacts)
+ *     artifacts.json    [{ name, path }]  (optional named artifacts;
+ *                       the reader also accepts { name -> path })
  *     files/...          binary assets referenced by `asset` paths
+ *
+ * `asset` and every `artifacts[].path` are relative to the artifacts dir and
+ * are resolved by the bundle builder — a parser never joins the dir itself.
  */
 
 /** Deterministic test outcome exposed by an adapter (subset of bundle status). */
@@ -63,13 +67,22 @@ export interface AdapterEvidence {
 }
 
 /** Everything a framework-specific parser must produce before bundling. */
+/**
+ * Named artifacts, name -> path relative to the artifacts dir.
+ *
+ * On disk this is written as `[{ name, path }]` (see
+ * `writeAdapterArtifacts`); the reader also accepts the plain object form.
+ * Both normalize to this one shape, so writer and reader cannot drift.
+ */
+export type AdapterArtifactIndex = Record<string, string>;
+
 export interface AdapterArtifacts {
   metadata: AdapterMetadata;
   sourceCode?: string;
   assertions?: AdapterAssertion[];
   evidence?: AdapterEvidence[];
   /** Named artifact copies alongside the bundle (trace.zip, …). */
-  artifacts?: Record<string, string>;
+  artifacts?: AdapterArtifactIndex;
 }
 
 /**
