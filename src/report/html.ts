@@ -1,13 +1,7 @@
 import type { EvidenceBundle } from "../evidence/model.js";
 import type { Verdict } from "../oracle/schema.js";
+import { assertionTally, verdictCssClass, verdictPercent } from "../oracle/schema.js";
 import type { ClusterResult } from "../oracle/cluster.js";
-
-const VERDICT_CLASS: Record<Verdict["verdict"], string> = {
-  PASS: "pass",
-  REGRESSION: "regression",
-  FAIL: "fail",
-  UNCERTAIN: "uncertain",
-};
 
 export function escapeHtml(text: string): string {
   return text
@@ -34,7 +28,7 @@ function evidenceList(
 
 /** Self-contained per-test evidence report. Screenshots resolve relatively (assets/…). */
 export function renderHtmlReport(bundle: EvidenceBundle, verdict: Verdict): string {
-  const passed = bundle.assertions.filter((a) => a.passed).length;
+  const tally = assertionTally(bundle);
   const screenshots = bundle.evidence.filter((e) => e.type === "screenshot");
 
   return `<!DOCTYPE html>
@@ -58,12 +52,12 @@ export function renderHtmlReport(bundle: EvidenceBundle, verdict: Verdict): stri
   footer { margin-top: 3rem; color: gray; font-size: .85rem; }
 </style>
 </head>
-<body class="${VERDICT_CLASS[verdict.verdict]}">
+<body class="${verdictCssClass(verdict.verdict)}">
 <header>
   <span class="badge">${verdict.verdict}</span>
-  <strong>${Math.round(verdict.confidence * 100)}% confidence</strong>
+  <strong>${verdictPercent(verdict.confidence)} confidence</strong>
   <h1>${escapeHtml(bundle.title)}</h1>
-  <p class="meta"><code>${escapeHtml(bundle.file)}</code> · deterministic: ${bundle.status}, ${passed}/${bundle.assertions.length} assertions passed</p>
+  <p class="meta"><code>${escapeHtml(bundle.file)}</code> · deterministic: ${bundle.status}, ${tally.text} assertions passed</p>
 </header>
 
 <section><h2>Intent</h2><p>${escapeHtml(verdict.intentSummary)}</p></section>
@@ -111,8 +105,8 @@ export function renderHtmlIndex(entries: IndexEntry[], clusters?: ClusterResult)
   body { font-family: system-ui, sans-serif; max-width: 50rem; margin: 2rem auto; padding: 0 1rem; }
   table { border-collapse: collapse; width: 100%; }
   td, th { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #8884; }
-  .PASS { color: #15803d; } .REGRESSION, .FAIL { color: #b91c1c; font-weight: 700; } .UNCERTAIN { color: #a16207; }
-  .ERROR { color: #b91c1c; }
+  .pass { color: #15803d; } .regression, .fail { color: #b91c1c; font-weight: 700; } .uncertain { color: #a16207; }
+  .error { color: #b91c1c; }
 </style>
 </head>
 <body>
@@ -133,7 +127,9 @@ ${
 ${entries
   .map(
     (e) =>
-      `<tr><td class="${e.verdict ?? "ERROR"}">${e.verdict ?? "JUDGE ERROR"}</td>` +
+      `<tr><td class="${e.verdict ? verdictCssClass(e.verdict) : "error"}">${
+        e.verdict ?? "JUDGE ERROR"
+      }</td>` +
       `<td><a href="${escapeHtml(e.href)}">${escapeHtml(e.title)}</a>${
         e.error ? ` <span style="color:gray">${escapeHtml(e.error.split("\n")[0])}</span>` : ""
       }</td></tr>`,
