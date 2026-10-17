@@ -60,7 +60,11 @@ export class VisualReviewerReporter implements Reporter {
 
     const evidence: Evidence[] = [];
     const artifacts: Record<string, string> = {};
-    const bundleDir = path.join(this.outputDir, sanitizeTestId(test.id + "-" + test.title));
+    // writeBundle() sanitizes bundle.testId alone, so assets MUST live in the
+    // same directory the bundle lands in — otherwise selectScreenshots (which
+    // resolves content.file relative to the bundle's directory) reads nothing
+    // and the judge silently judges text-only.
+    const bundleDir = path.join(this.outputDir, sanitizeTestId(test.id));
 
     // 1. Attachments (screenshots from our fixture, traces, videos…)
     for (const attachment of result.attachments) {
