@@ -25,7 +25,7 @@ export const VerdictSchema = z.object({
       observation: z.string(),
     }),
   ),
-  suggestedNextStep: z.string().optional(),
+  suggestedNextStep: z.string().nullish(),
 });
 
 export type Verdict = z.infer<typeof VerdictSchema>;
