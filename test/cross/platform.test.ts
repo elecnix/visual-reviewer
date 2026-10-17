@@ -8,7 +8,10 @@ import {
   xctestAdapter,
   groupPlatformRuns,
   consistencyKey,
+  registerPlatformAdapter,
+  runFromBundle,
 } from "../../dist/index.js";
+import { getAdapter, unregisterAdapter } from "../../dist/adapter/index.js";
 
 function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "ve-cross-"));
@@ -90,4 +93,27 @@ test("groupPlatformRuns groups same intent across platforms and flags divergence
   assert.equal(iosRun?.assertionsPassed, 0, "iOS assertion failed");
   assert.equal(iosRun?.hasNativeUI, false, "appium exposes native_state, not a ui tree");
   fs.rmSync(root, { recursive: true });
+});
+
+test("platform labelling reads the one adapter registry, no second store", () => {
+  // The adapters are registered by the registry module itself; labelling
+  // resolves their `kind` without anyone calling a registration function.
+  assert.equal(getAdapter("appium")?.kind, "native");
+  assert.equal(getAdapter("xctest")?.kind, "native");
+
+  const root = tmpDir();
+  const bundle = appiumAdapter.build(appiumFixtureDir(root));
+  assert.ok(String(bundle.evidence[0]?.source).startsWith("appium:"));
+  assert.equal(runFromBundle(bundle, root).platform, "iOS");
+  assert.equal(runFromBundle(bundle, root).adapter, "appium");
+  fs.rmSync(root, { recursive: true });
+});
+
+test("registerPlatformAdapter is an alias for the single registry", () => {
+  const fake = { ...appiumAdapter, id: "platform-fake" };
+  assert.equal(getAdapter("platform-fake"), undefined);
+  registerPlatformAdapter(fake);
+  assert.equal(getAdapter("platform-fake")?.id, "platform-fake");
+  unregisterAdapter("platform-fake");
+  assert.equal(getAdapter("platform-fake"), undefined);
 });
