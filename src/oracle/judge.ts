@@ -9,16 +9,35 @@ import { createComplete } from "./provider.js";
 import type { Complete, UserContent } from "./complete.js";
 import { VerdictSchema, extractVerdictJson, type Verdict } from "./schema.js";
 import { followUpInstruction, gatherRequestedEvidence, parseEvidenceRequests } from "./followup.js";
-import { clusterRegressions, renderClusterSummary, type ClusterResult } from "./cluster.js";
 import type { OracleConfig } from "../config.js";
 import { renderMarkdownReport } from "../report/markdown.js";
-import { renderHtmlIndex, renderHtmlReport, type IndexEntry } from "../report/html.js";
+import { renderHtmlReport } from "../report/html.js";
 import { reportPathFor } from "../config.js";
+
+/**
+ * Why a bundle ended the way it did. The run's exit policy reads this instead
+ * of the wording of `error`, so rephrasing a message can no longer turn a
+ * failed judgement into exit 0 (or the reverse).
+ */
+export type JudgementOutcome =
+  /** A verdict was reached, whatever its kind — including UNCERTAIN. */
+  | "judged"
+  /** The model never produced a parseable verdict within the retry ladder. */
+  | "unparseable"
+  /** The run could not reach a verdict: transport, provider, or a throw. */
+  | "error";
 
 export interface Judgement {
   bundlePath: string;
   verdict?: Verdict;
   error?: string;
+  /**
+   * Set whenever this module or the run knows which of the three happened.
+   * Optional so that a judgement assembled elsewhere (bench.ts) still fits;
+   * consumers must treat a missing outcome alongside an `error` as `"error"`,
+   * the conservative reading. See `exitCodeFor` in `run.ts`.
+   */
+  outcome?: JudgementOutcome;
 }
 
 /** How many times the verdict ladder re-asks before giving up. */
@@ -202,6 +221,7 @@ export async function judgeBundle(
     }
     return {
       bundlePath,
+      outcome: "unparseable",
       error: `Model returned unparseable verdict after retry.\nRaw: ${lastRaw.slice(0, 500)}`,
     };
   }
@@ -243,80 +263,27 @@ export async function judgeBundle(
     /* history is best-effort */
   }
 
-  return { bundlePath, verdict };
+  return { bundlePath, verdict, outcome: "judged" };
 }
 
+/**
+ * Judge many bundles as one run.
+ *
+ * Kept as the entry point for `cli.ts` and the Playwright reporter; the run
+ * itself — progress output, run index, clustering, CI surfacing and the exit
+ * policy — now lives in `run.ts`. `bench.ts` deliberately still calls
+ * `judgeBundle` directly, because a benchmark measures per-bundle judging
+ * and has no run to report on.
+ */
 export async function judgeBundles(
   bundlePaths: string[],
   config: OracleConfig,
-  // Same seam, same default expression as judgeBundle — one completion seam for
-  // the whole run, so a scripted implementation can drive every bundle in a run
-  // as well as a single judgement.
+  // Same seam, same default expression as judgeBundle (0302288). The default
+  // means `complete` is always defined here, so it is passed straight through
+  // rather than conditionally spread.
   complete: Complete = createComplete(config),
 ): Promise<Judgement[]> {
-  const results: Judgement[] = [];
-  for (const bundlePath of bundlePaths) {
-    const bundle = readBundle(bundlePath);
-    process.stdout.write(`[visual-reviewer] judging ${bundle.title} … `);
-    try {
-      const judgement = await judgeBundle(bundlePath, config, complete);
-      if (judgement.verdict) {
-        console.log(
-          `${judgement.verdict.verdict} (${Math.round(judgement.verdict.confidence * 100)}%)`,
-        );
-      } else {
-        console.log("UNCERTAIN (parse failure)");
-      }
-      results.push(judgement);
-    } catch (err) {
-      console.log(`ERROR: ${err instanceof Error ? err.message : String(err)}`);
-      results.push({ bundlePath, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
-  writeRunIndex(bundlePaths, results);
-
-  // Regression clustering: many material verdicts often share one root cause.
-  let clusters: ClusterResult | undefined;
-  try {
-    clusters = computeClusters(results);
-    const summary = renderClusterSummary(clusters);
-    if (summary) console.log(summary);
-  } catch {
-    /* clustering is advisory — never break the run over it */
-  }
-
-  // Advisory CI surfacing: job summary + ::warning annotations on GitHub.
-  const gh = await import("../ci/github.js");
-  if (gh.isGitHubCI()) {
-    gh.writeStepSummary(results, clusters);
-    gh.emitAnnotations(results);
-  }
-  return results;
-}
-
-/** Cluster material verdicts by shared failure signatures across a run. */
-export function computeClusters(results: Judgement[]): ClusterResult {
-  return clusterRegressions(
-    results
-      .filter((r) => r.verdict)
-      .map((r) => ({ bundle: readBundle(r.bundlePath), verdict: r.verdict })),
-  );
-}
-
-/** Run-level HTML index next to the per-test reports. */
-function writeRunIndex(bundlePaths: string[], results: Judgement[], clusters?: ClusterResult): void {
-  if (bundlePaths.length === 0) return;
-  const outputDir = path.dirname(path.dirname(path.resolve(bundlePaths[0])));
-  const entries: IndexEntry[] = results.map((r) => {
-    const bundleDir = path.dirname(path.resolve(r.bundlePath));
-    const bundle = readBundle(r.bundlePath);
-    return {
-      title: bundle.title,
-      href: path.relative(outputDir, path.join(bundleDir, "report.html")),
-      verdict: r.verdict?.verdict,
-      error: r.error,
-    };
-  });
-  fs.writeFileSync(path.join(outputDir, "report.html"), renderHtmlIndex(entries, clusters));
+  const { runJudgedBundles } = await import("./run.js");
+  const run = await runJudgedBundles(bundlePaths, { config, complete });
+  return run.results;
 }
