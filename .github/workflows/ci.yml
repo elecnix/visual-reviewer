@@ -33,13 +33,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc
-      - name: Judge one synthetic bundle with Ollama Cloud
+      - name: Judge one synthetic bundle through the routed endpoint
         # The secret is scoped to this step, so npm ci and tsc cannot read it.
-        # Ollama Cloud is selected through the VISUAL_REVIEWER_* overrides; the
-        # default judge (OpenRouter) is unchanged for users.
+        # The endpoint, the model and the credential are the three the Cite
+        # reviewer already uses, so this smoke exercises the endpoint the fleet
+        # bills against instead of a second account nobody else calls. The
+        # judge's own defaults stay unchanged for users.
         env:
-          VISUAL_REVIEWER_BASE_URL: https://ollama.com/v1
-          VISUAL_REVIEWER_MODEL: deepseek-v4.1-flash
-          VISUAL_REVIEWER_API_KEY_ENV: OLLAMA_API_KEY
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          VISUAL_REVIEWER_BASE_URL: ${{ vars.REVIEW_MODEL_BASE_URL }}
+          VISUAL_REVIEWER_MODEL: ${{ vars.REVIEW_MODEL_ID }}
+          VISUAL_REVIEWER_API_KEY_ENV: REVIEW_MODEL_API_KEY
+          REVIEW_MODEL_API_KEY: ${{ secrets.REVIEW_MODEL_API_KEY }}
         run: node scripts/oracle-smoke.mjs
