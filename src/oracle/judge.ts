@@ -177,9 +177,13 @@ export async function judgeBundle(
   // Machine-readable verdict for post-hoc tooling (clustering, evals).
   fs.writeFileSync(path.join(bundleDir, "verdict.json"), JSON.stringify(verdict, null, 2));
 
-  // Persist this run for the next run's baseline comparison.
+  // Persist this run for the next run's baseline comparison. Prefer a named
+  // attachment screenshot (an explicit test capture) over a trace screencast
+  // frame: the screencast's last frame lags the test's end state.
   const screenshots = bundle.evidence.filter((e) => e.type === "screenshot");
-  const finalShot = screenshots[screenshots.length - 1];
+  const finalShot =
+    screenshots.find((s) => /\.png$|\.jpe?g$/.test(String(s.metadata?.name ?? ""))) ??
+    screenshots[screenshots.length - 1];
   const record: HistoryRecord = {
     timestamp: new Date().toISOString(),
     verdict: verdict.verdict,
