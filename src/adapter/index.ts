@@ -11,15 +11,24 @@ export {
   getAdapter,
   buildForAdapter,
   parseCanonical,
+  canonicalAdapter,
 } from "./registry.js";
 export type {
   FrameworkAdapter,
   AdapterArtifacts,
+  AdapterArtifactIndex,
   AdapterAssertion,
   AdapterEvidence,
   AdapterMetadata,
   AdapterStatus,
 } from "./types.js";
 export type { RegisteredAdapter } from "./registry.js";
+export {
+  defineNativeAdapter,
+  logEventsToEvidence,
+  nativeMetadata,
+  type NativeLogEvent,
+  type NativeRunHeader,
+} from "./native.js";
 export { appiumAdapter, parseAppium } from "./appium.js";
 export { xctestAdapter, parseXCTest } from "./xctest.js";
