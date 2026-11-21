@@ -1,14 +1,8 @@
 import type { EvidenceBundle } from "../evidence/model.js";
 import type { Verdict } from "../oracle/schema.js";
+import { assertionTally, firstLine, verdictIcon, verdictPercent } from "../oracle/schema.js";
 import type { ClusterResult } from "../oracle/cluster.js";
 import { renderClusterSummary } from "../oracle/cluster.js";
-
-const VERDICT_ICON: Record<Verdict["verdict"], string> = {
-  PASS: "✅",
-  REGRESSION: "🚨",
-  FAIL: "❌",
-  UNCERTAIN: "⚠️",
-};
 
 function evidenceSection(entries: Verdict["supportingEvidence"], heading: string): string {
   if (entries.length === 0) return "";
@@ -22,22 +16,22 @@ export function renderMarkdownReport(
   verdict: Verdict,
   baseline?: { date: string; verdict: string; confidence: number } | null,
 ): string {
-  const passed = bundle.assertions.filter((a) => a.passed).length;
+  const tally = assertionTally(bundle);
   return `# Visual Reviewer — Evidence Report
 
 **Test:** ${bundle.title}
 **File:** \`${bundle.file}\`
-**Deterministic result:** ${bundle.status} — ${passed}/${bundle.assertions.length} assertions passed
+**Deterministic result:** ${bundle.status} — ${tally.text} assertions passed
 
 ## AI Verdict
 
-${VERDICT_ICON[verdict.verdict]} **${verdict.verdict}** — ${Math.round(verdict.confidence * 100)}% confidence
+${verdictIcon(verdict.verdict)} **${verdict.verdict}** — ${verdictPercent(verdict.confidence)} confidence
 
 > ${verdict.intentSummary}
 ${
   baseline
     ? `
-**Baseline:** compared against previous run from ${baseline.date} — previous AI verdict ${baseline.verdict} (${Math.round(baseline.confidence * 100)}%).
+**Baseline:** compared against previous run from ${baseline.date} — previous AI verdict ${baseline.verdict} (${verdictPercent(baseline.confidence)}).
 `
     : ""
 }
@@ -61,15 +55,14 @@ export function renderRunSummary(
 ): string {
   const lines = ["", "── visual-reviewer (advisory) " + "─".repeat(30)];
   for (const j of judgements) {
-    const title = j.verdict ? "" : "";
     if (j.verdict) {
       lines.push(
-        `  ${VERDICT_ICON[j.verdict.verdict]} ${j.verdict.verdict.padEnd(11)} ${Math.round(
-          j.verdict.confidence * 100,
-        )}%  ${title || j.bundlePath}`,
+        `  ${verdictIcon(j.verdict.verdict)} ${j.verdict.verdict.padEnd(11)} ${verdictPercent(
+          j.verdict.confidence,
+        )}  ${j.bundlePath}`,
       );
     } else {
-      lines.push(`  ⚠️  JUDGE ERROR  ${j.error?.split("\n")[0]}`);
+      lines.push(`  ⚠️  JUDGE ERROR  ${firstLine(j.error ?? "")}`);
     }
   }
   if (clusters) {

@@ -1,4 +1,5 @@
 import type { EvidenceBundle } from "../evidence/model.js";
+import { firstLine, isMaterial } from "./schema.js";
 
 /**
  * Regression clustering (roadmap Phase 3): when several tests in a run
@@ -65,10 +66,7 @@ function urlPath(url: string): string {
 }
 
 function normalizeMessage(text: unknown): string {
-  const firstLine = String(text ?? "")
-    .split("\n")[0]
-    .trim();
-  return firstLine.slice(0, 160);
+  return firstLine(String(text ?? ""), 160);
 }
 
 export interface ClusterTest {
@@ -95,8 +93,6 @@ export interface ClusterResult {
   unclustered: number;
 }
 
-const MATERIAL_VERDICTS = new Set(["REGRESSION", "FAIL", "UNCERTAIN"]);
-
 /**
  * Group material verdicts by identical failure signature. PASS verdicts and
  * judge errors never join a cluster. Clusters smaller than minClusterSize
@@ -113,7 +109,7 @@ export function clusterRegressions(
 
   for (const item of items) {
     const verdict = item.verdict;
-    if (!verdict || !MATERIAL_VERDICTS.has(verdict.verdict)) continue;
+    if (!verdict || !isMaterial(verdict.verdict)) continue;
     for (const signal of extractFailureSignals(item.bundle)) {
       let entry = byKey.get(signal.key);
       if (!entry) {
