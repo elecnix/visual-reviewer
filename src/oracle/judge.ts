@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { generateText } from "ai";
 import { readBundle } from "../evidence/store.js";
+import type { EvidenceBundle } from "../evidence/model.js";
 import { loadLatestHistory, loadAllHistory, saveHistoryRecord, detectFlakiness, type HistoryRecord } from "../evidence/history.js";
 import { loadFeedbackForTest, type FeedbackRecord } from "../evidence/feedback.js";
 import { buildSystemPrompt, buildUserContent } from "../context/builder.js";
-import { resolveModel } from "./provider.js";
+import { createComplete } from "./provider.js";
+import type { Complete, UserContent } from "./complete.js";
 import { VerdictSchema, extractVerdictJson, type Verdict } from "./schema.js";
 import { followUpInstruction, gatherRequestedEvidence, parseEvidenceRequests } from "./followup.js";
 import { clusterRegressions, renderClusterSummary, type ClusterResult } from "./cluster.js";
@@ -20,16 +21,122 @@ export interface Judgement {
   error?: string;
 }
 
+/** How many times the verdict ladder re-asks before giving up. */
+const MAX_PARSE_ATTEMPTS = 3;
+
+const RETRY_INSTRUCTION =
+  "Your previous reply was not a valid JSON verdict object. Respond again with ONLY the JSON object, no prose, no code fences.";
+
+const FINAL_INSTRUCTION =
+  "Based on your original observations plus this requested evidence, return your final verdict. Respond ONLY with the JSON verdict object.";
+
+/** Everything a round needs that does not depend on its own messages. */
+interface RoundOptions {
+  complete: Complete;
+  systemPrompt: string;
+  temperature: number;
+  timeoutMs: number;
+  /**
+   * Rebuilds the evidence dossier for a round. Called once per model call:
+   * the retry ladder re-reads every screenshot off disk on each attempt
+   * (see `context/builder.ts`), so the call count is the cost policy and it
+   * is deliberately left where it was.
+   */
+  userContent: () => UserContent;
+}
+
+/**
+ * Verdict ladder. Cheap models wrap, preface or slightly corrupt the verdict
+ * JSON, so re-ask up to twice, feeding back the previous raw reply as an
+ * assistant turn. Returns the first verdict that parses, or undefined with
+ * the last raw reply kept for diagnosis.
+ */
+async function runVerdictLadder(
+  opts: RoundOptions,
+): Promise<{ verdict: Verdict | undefined; lastRaw: string }> {
+  let lastRaw = "";
+  for (let attempt = 0; attempt < MAX_PARSE_ATTEMPTS; attempt++) {
+    const { text } = await opts.complete({
+      system: opts.systemPrompt,
+      temperature: opts.temperature,
+      timeoutMs: opts.timeoutMs,
+      messages: [
+        { role: "user", content: opts.userContent() },
+        ...(attempt > 0
+          ? ([
+              { role: "assistant", content: lastRaw.slice(0, 2000) },
+              { role: "user", content: RETRY_INSTRUCTION },
+            ] as const)
+          : []),
+      ],
+    });
+    lastRaw = text;
+    try {
+      return { verdict: VerdictSchema.parse(extractVerdictJson(text)), lastRaw };
+    } catch {
+      /* cheap models often emit prose around the JSON — ask again */
+    }
+  }
+  return { verdict: undefined, lastRaw };
+}
+
+/**
+ * Bounded agentic round: on UNCERTAIN or low confidence, let the model request
+ * specific additional evidence and re-judge. At most one round, and a failed
+ * round keeps the original verdict — investigation is best-effort.
+ */
+async function runFollowUpRound(
+  opts: RoundOptions,
+  bundle: EvidenceBundle,
+  bundleDir: string,
+  verdict: Verdict,
+  lastRaw: string,
+): Promise<Verdict> {
+  const base = {
+    system: opts.systemPrompt,
+    temperature: opts.temperature,
+    timeoutMs: opts.timeoutMs,
+  };
+  const { text: followUpText } = await opts.complete({
+    ...base,
+    messages: [
+      { role: "user", content: opts.userContent() },
+      { role: "assistant", content: lastRaw.slice(0, 4000) },
+      { role: "user", content: followUpInstruction() },
+    ],
+  });
+  const requests = parseEvidenceRequests(followUpText);
+  if (requests.length === 0) return verdict;
+
+  const evidenceParts = gatherRequestedEvidence(bundle, bundleDir, requests);
+  const { text: refinedText } = await opts.complete({
+    ...base,
+    messages: [
+      { role: "user", content: opts.userContent() },
+      { role: "assistant", content: lastRaw.slice(0, 4000) },
+      { role: "user", content: [...evidenceParts, { type: "text", text: FINAL_INSTRUCTION }] },
+    ],
+  });
+  try {
+    return VerdictSchema.parse(extractVerdictJson(refinedText));
+  } catch {
+    /* keep the original verdict — investigation is best-effort */
+  }
+  return verdict;
+}
+
 export async function judgeBundle(
   bundlePath: string,
   config: OracleConfig,
+  complete: Complete = createComplete(config),
 ): Promise<Judgement> {
   const bundle = readBundle(bundlePath);
   const bundleDir = path.dirname(bundlePath);
-  const model = resolveModel(config);
 
-  // Team expectations (org memory seed): inject when the file exists.
-  let systemPrompt = buildSystemPrompt();
+  // Team expectations (org memory seed) + human feedback on previous
+  // verdicts. Any read failure falls back to the default prompt; the prompt
+  // itself is pure, so it is built exactly once, on whichever path is taken.
+  let systemPrompt: string;
   try {
     const expectationsPath = path.resolve(config.expectationsFile);
     const feedback: FeedbackRecord[] = loadFeedbackForTest(
@@ -51,6 +158,7 @@ export async function judgeBundle(
     );
   } catch {
     /* no expectations/feedback — default prompt */
+    systemPrompt = buildSystemPrompt();
   }
 
   // Phase-2 baseline: compare against the most recent previous judgement.
@@ -72,51 +180,29 @@ export async function judgeBundle(
         flakinessNote,
       }
     : null;
-  let text = "";
-  let verdict: Verdict | undefined;
-  let lastRaw = "";
-  // Cheap models occasionally wrap/precede the JSON with prose or emit
-  // slightly-invalid JSON; retry twice more before giving up.
-  for (let attempt = 0; attempt < 3 && !verdict; attempt++) {
-    const result = await generateText({
-      model,
-      system: systemPrompt,
-      messages: [
-        { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
-        ...(attempt > 0
-          ? ([
-              { role: "assistant", content: lastRaw.slice(0, 2000) },
-              {
-                role: "user",
-                content:
-                  "Your previous reply was not a valid JSON verdict object. Respond again with ONLY the JSON object, no prose, no code fences.",
-              },
-            ] as const)
-          : []),
-      ],
-      temperature: config.temperature,
-      abortSignal: AbortSignal.timeout(config.timeoutMs),
-    });
-    text = result.text;
-    lastRaw = text;
-    try {
-      verdict = VerdictSchema.parse(extractVerdictJson(text));
-    } catch {
-      verdict = undefined;
-    }
-  }
+  const round: RoundOptions = {
+    complete,
+    systemPrompt,
+    temperature: config.temperature,
+    timeoutMs: config.timeoutMs,
+    userContent: () => buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline),
+  };
+
+  const ladder = await runVerdictLadder(round);
+  let verdict = ladder.verdict;
+  const { lastRaw } = ladder;
 
   if (!verdict) {
     // Keep the full raw output for diagnosis — the error message only
     // carries a 500-char preview.
     try {
-      fs.writeFileSync(path.join(bundleDir, "verdict-error.txt"), text);
+      fs.writeFileSync(path.join(bundleDir, "verdict-error.txt"), lastRaw);
     } catch {
       /* best-effort */
     }
     return {
       bundlePath,
-      error: `Model returned unparseable verdict after retry.\nRaw: ${text.slice(0, 500)}`,
+      error: `Model returned unparseable verdict after retry.\nRaw: ${lastRaw.slice(0, 500)}`,
     };
   }
 
@@ -126,47 +212,7 @@ export async function judgeBundle(
     config.followUps &&
     (verdict.verdict === "UNCERTAIN" || verdict.confidence < config.followUpThreshold)
   ) {
-    const fu = await generateText({
-      model,
-      system: systemPrompt,
-      messages: [
-        { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
-        { role: "assistant", content: lastRaw.slice(0, 4000) },
-        { role: "user", content: followUpInstruction() },
-      ],
-      temperature: config.temperature,
-      abortSignal: AbortSignal.timeout(config.timeoutMs),
-    });
-    const requests = parseEvidenceRequests(fu.text);
-    if (requests.length > 0) {
-      const evidenceParts = gatherRequestedEvidence(bundle, bundleDir, requests);
-      const second = await generateText({
-        model,
-        system: systemPrompt,
-        messages: [
-          { role: "user", content: buildUserContent(bundle, bundleDir, config.maxScreenshots, baseline) },
-          { role: "assistant", content: lastRaw.slice(0, 4000) },
-          {
-            role: "user",
-            content: [
-              ...evidenceParts,
-              {
-                type: "text",
-                text: "Based on your original observations plus this requested evidence, return your final verdict. Respond ONLY with the JSON verdict object.",
-              },
-            ],
-          },
-        ],
-        temperature: config.temperature,
-        abortSignal: AbortSignal.timeout(config.timeoutMs),
-      });
-      try {
-        const refined = VerdictSchema.parse(extractVerdictJson(second.text));
-        verdict = refined;
-      } catch {
-        /* keep the original verdict — investigation is best-effort */
-      }
-    }
+    verdict = await runFollowUpRound(round, bundle, bundleDir, verdict, lastRaw);
   }
 
   // Advisory-only: write the report, never influence exit codes here.
@@ -203,13 +249,17 @@ export async function judgeBundle(
 export async function judgeBundles(
   bundlePaths: string[],
   config: OracleConfig,
+  // Same seam, same default expression as judgeBundle — one completion seam for
+  // the whole run, so a scripted implementation can drive every bundle in a run
+  // as well as a single judgement.
+  complete: Complete = createComplete(config),
 ): Promise<Judgement[]> {
   const results: Judgement[] = [];
   for (const bundlePath of bundlePaths) {
     const bundle = readBundle(bundlePath);
     process.stdout.write(`[visual-reviewer] judging ${bundle.title} … `);
     try {
-      const judgement = await judgeBundle(bundlePath, config);
+      const judgement = await judgeBundle(bundlePath, config, complete);
       if (judgement.verdict) {
         console.log(
           `${judgement.verdict.verdict} (${Math.round(judgement.verdict.confidence * 100)}%)`,
